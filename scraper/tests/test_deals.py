@@ -73,6 +73,37 @@ def test_language_and_condition_are_not_guessed_from_platform():
     assert condition_of('Light Played')=='LP'
 
 
+@pytest.mark.parametrize('title,expected',[
+    ('Pikachu set de base en bon état','UNKNOWN'),
+    ('Pikachu set de base FR','FR'), ('Pikachu 🇫🇷','FR'),
+    ('Pikachu japonais','JP'), ('Pikachu JAP','JP'), ('Pikachu 🇯🇵','JP'),
+    ('Pikachu DE','DE'), ('Pikachu EN','EN'),
+    ('Pikachu JP français','UNKNOWN'),
+])
+def test_language_requires_card_language_evidence(title,expected):
+    assert language_of(title)==expected
+
+
+def test_all_languages_produces_separate_medians_and_evidence():
+    rows=[]
+    for language,prices in [('FR',[100,110,120]),('JP',[200,210,220])]:
+        title=f'Pokemon Pikachu 25/102 holo {language} NM'
+        rows.append(listing('cardmarket',20,title=title,language=language,identifier=len(rows)+1))
+        for price in prices:
+            rows.append(listing(price=price,sold=True,title=title,language=language,identifier=len(rows)+1))
+    deals=analyze(rows,Settings(language='ALL',direction='cm_to_ebay'),now=NOW)['deals']
+    assert {d['language']:d['reference_price'] for d in deals}=={'FR':110,'JP':210}
+    assert all(e['language']==d['language'] for d in deals for e in d['evidence'])
+    jp_buys=[r for r in rows if r.source=='cardmarket' and r.language=='JP']
+    fr_sales=[r for r in rows if r.sold and r.language=='FR']
+    assert not analyze(jp_buys+fr_sales,Settings(language='ALL'),now=NOW)['deals']
+
+
+def test_explicit_metadata_does_not_override_multilingual_title():
+    key,reason=identity(listing(title='Pikachu 25/102 holo FR JP NM',language='JP'))
+    assert key is None and reason=='langue_ambigue'
+
+
 @pytest.mark.parametrize('changes',[{'card_number':'26/102'},{'variant':'reverse'},{'language':'JP'}])
 def test_conflicting_metadata_rejected(changes):
     key,reason=identity(listing(**changes))
@@ -117,6 +148,7 @@ def test_new_ebay_cards_remove_accessibility_text_and_read_shipping():
     html='''<li class="s-card"><a class="s-card__link" href="https://www.ebay.fr/itm/123456789012"></a><div class="s-card__title"><span>Pikachu 25/102 holo FR NM</span><span class="clipped">La page s'ouvre dans une nouvelle fenêtre</span></div><span class="s-card__price">50,00 EUR</span><div class="s-card__attribute-row">+2,78 EUR pour la livraison</div></li>'''
     row=parse_ebay(html)[0]
     assert row.title=='Pikachu 25/102 holo FR NM' and row.shipping==2.78
+    assert row.listing_id=='123456789012'
 
 
 def test_blocked_sold_search_does_not_disable_active_ebay():
@@ -173,6 +205,44 @@ def test_cardmarket_reads_seller_condition_and_language():
     rows=parse_cardmarket(html,'https://www.cardmarket.com/fr/Pokemon/Products/Singles/Base-Set/Pikachu')
     assert len(rows)==1 and rows[0].seller=='Alice' and rows[0].language=='FR' and rows[0].condition=='NM'
     assert rows[0].shipping is None
+
+
+def test_cardmarket_login_is_explicit():
+    from app.deals.browser import access_gate
+    assert access_gate('https://www.cardmarket.com/fr/Pokemon/Login').status=='login_required'
+
+
+def test_cardmarket_pagination_keeps_filters_and_stays_on_product():
+    from app.deals.parsers import cardmarket_next_page
+    url='https://www.cardmarket.com/fr/Pokemon/Products/Singles/Base-Set/Pikachu?language=7'
+    html='<div class="pagination"><a href="?site=2">Wrong filters</a><a href="?language=7&amp;site=2">2</a></div>'
+    assert cardmarket_next_page(html,url)==url+'&site=2'
+
+
+def test_cardmarket_seller_comment_is_not_card_language():
+    html='<h1>Pikachu</h1><dl><dt>Nombre</dt><dd>58</dd></dl><div class="article-row"><a href="/fr/Pokemon/Users/JapaneseShop" title="Japanese">JapaneseShop</a><div class="price-container"><b class="fw-bold">10 EUR</b></div><div class="product-attributes"><span title="French"></span>NM</div></div>'
+    row=parse_cardmarket(html,'https://www.cardmarket.com/fr/Pokemon/Products/Singles/Base-Set/Pikachu')[0]
+    assert row.language=='FR' and row.card_number=='58'
+
+
+@pytest.mark.parametrize('pages,expected,status',[(1,1,'partial'),(2,2,'ok')])
+def test_cardmarket_pages_deduplicate_and_report_remaining_offers(pages,expected,status):
+    from app.deals.collector import Collector
+    product='https://www.cardmarket.com/fr/Pokemon/Products/Singles/Base-Set/Pikachu'
+    def offer(number):
+        return f'<div class="article-row" id="article-{number}"><a href="/fr/Pokemon/Users/Alice">Alice</a><div class="price-container"><b class="fw-bold">10,00 EUR</b></div><div class="product-attributes">NM Japanese</div><span class="shipping-cost">2,50 EUR</span></div>'
+    class Pages:
+        async def product(self,url):
+            if '/Search?' in url:return f'<a href="{product}">Pikachu</a>',url
+            return '<h1>Pikachu 25/102 holo</h1>'+offer(1)+(offer(2) if 'site=2' in url else '<a rel="next" href="?site=2">Next</a>'),url
+    async def run():
+        collector=Collector(Pages())
+        await collector.cardmarket('Pikachu',Settings(pages=pages))
+        assert len(collector.rows)==expected
+        assert all(r.language=='JP' and r.shipping==2.5 for r in collector.rows)
+        assert collector.reports[-1]['status']==status
+        assert collector.reports[-1]['shipping_count']==expected
+    asyncio.run(run())
 
 
 def as_csv(rows):

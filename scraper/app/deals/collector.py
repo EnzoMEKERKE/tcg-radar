@@ -1,12 +1,15 @@
 """Bounded, asynchronous collection; blocked sources are reported, not treated as empty."""
 import asyncio
+import random
+import time
 from urllib.parse import urlencode, urlsplit, urljoin
 from bs4 import BeautifulSoup
 import httpx
 from .browser import BrowserPages, MarketplaceAccessError
 from .local_browser import LocalOrBrowserPages
-from .parsers import parse_ebay, parse_cardmarket, product_links
+from .parsers import parse_ebay, parse_cardmarket, product_links, cardmarket_next_page
 from .identity import identity
+from .discovery import card_search_name, sold_searches
 
 
 class Collector:
@@ -17,6 +20,9 @@ class Collector:
         self.requests = 0
         self.stopped_sources = set()
         self.product_count = 0
+        self.next_read_at = 0
+        self.read_delay = 20 if pages is None else 0
+        self.on_progress = None
 
     async def read(self,url,source):
         if source in self.stopped_sources:
@@ -24,6 +30,10 @@ class Collector:
             return None
         self.requests += 1
         try:
+            if self.on_progress:
+                await self.on_progress(source)
+            await asyncio.sleep(max(0,self.next_read_at-time.monotonic()))
+            self.next_read_at = time.monotonic()+self.read_delay+random.uniform(0,self.read_delay*0.75)
             async with asyncio.timeout(40):
                 html, final = await self.pages.product(url)
             soup = BeautifulSoup(html,'html.parser')
@@ -34,7 +44,11 @@ class Collector:
                 return None
             return html
         except MarketplaceAccessError as error:
-            self.stopped_sources.add(source)
+            # An empty search is not proof that the whole marketplace is blocked.
+            empty_search = (source=='cardmarket' and '/Products/Search?' in url and
+                            error.status=='unavailable' and 'ne contient pas encore' in str(error))
+            if not empty_search:
+                self.stopped_sources.add(source)
             self.reports.append({'source':source,'status':error.status,'message':str(error),'url':url})
         except httpx.HTTPStatusError as error:
             code = error.response.status_code
@@ -77,6 +91,8 @@ class Collector:
         if html is None: return
         links = product_links(html,url)[:max(0,settings.max_cards-self.product_count)]
         count = 0
+        truncated = False
+        seen_offers = set()
         for link in links:
             self.product_count += 1
             visited = set()
@@ -86,36 +102,46 @@ class Collector:
                 html = await self.read(link,'cardmarket')
                 if html is None: break
                 rows = parse_cardmarket(html,link)
+                fresh = []
+                for row in rows:
+                    key = (urlsplit(row.url).path, row.listing_id or row.seller,
+                           row.language, row.condition, row.variant, row.price)
+                    if key not in seen_offers:
+                        seen_offers.add(key)
+                        fresh.append(row)
+                rows = fresh
                 self.rows.extend(rows)
                 count += len(rows)
-                soup = BeautifulSoup(html,'html.parser')
-                following = soup.select_one('a[rel="next"]')
-                if not following: break
-                target = urljoin(link,following.get('href',''))
-                if urlsplit(target).hostname != 'www.cardmarket.com' or urlsplit(target).path != urlsplit(link).path: break
+                target = cardmarket_next_page(html,link)
+                if not target: break
+                if _ == settings.pages-1:
+                    truncated = True
                 link = target
                 await asyncio.sleep(0.4)
-        self.reports.append({'source':'cardmarket','status':'ok' if count else 'no_verified_rows','count':count,'message':f'{count} offres de vendeurs lues sur {len(links)} fiches.'})
+        self.reports.append({'source':'cardmarket','status':'partial' if truncated else 'ok' if count else 'no_verified_rows',
+            'count':count,'shipping_count':sum(r.shipping is not None for r in self.rows if r.source=='cardmarket'),
+            'message':f'{count} offres de vendeurs lues sur {len(links)} fiches.' +
+                (' Il reste des pages : augmentez la limite de pages pour poursuivre la collecte.' if truncated else '')})
 
     async def collect(self,settings):
         # First discover SOLD cards, then look for the same card on the other market.
-        await self.ebay(settings.query,settings,True)
-        await self.ebay(settings.query,settings,False)
+        ebay_query=settings.query
+        if not ebay_query and settings.language!='ALL':
+            words={'JP':'japonais','FR':'francais','EN':'english','DE':'deutsch','IT':'italiano','ES':'espanol','KR':'korean','CN':'chinese'}
+            ebay_query='pokemon '+words[settings.language]
+        await self.ebay(ebay_query,settings,True)
+        await self.ebay(ebay_query,settings,False)
         if settings.query:
-            await self.cardmarket(settings.query,settings)
+            await self.cardmarket(card_search_name(settings.query) or settings.query,settings)
         else:
-            seeds = {}
-            for row in self.rows:
-                key,_ = identity(row)
-                if key:
-                    seeds.setdefault(key[:4], key[0]+' '+key[1])
+            seeds = sold_searches(self.rows,settings.language)
             if seeds:
-                for query in list(seeds.values())[:settings.max_cards]:
+                for query in seeds[:settings.max_cards]:
                     if self.product_count >= settings.max_cards: break
                     await self.cardmarket(query,settings)
                     if 'cardmarket' in self.stopped_sources: break
             else:
-                await self.cardmarket('',settings)
+                self.reports.append({'source':'cardmarket','status':'no_verified_rows','message':'Aucune vente avec une langue confirmée ne permet de choisir les cartes à rechercher sur Cardmarket.'})
         return self.rows
 
     async def close(self):

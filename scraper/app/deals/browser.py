@@ -14,6 +14,8 @@ class MarketplaceAccessError(ValueError):
 def access_gate(url, title=''):
     parsed = urlsplit(url)
     host = parsed.hostname or ''
+    if host == 'www.cardmarket.com' and re.search(r'/(?:login|signin)(?:/|$)', parsed.path, re.I):
+        return MarketplaceAccessError('login_required','Cardmarket demande une connexion dans la fenêtre Chrome dédiée.')
     if host == 'signin.ebay.fr' or (host in ('ebay.fr','www.ebay.fr') and parsed.path.lower() in ('/signin', '/login')):
         return MarketplaceAccessError('login_required','eBay demande une connexion pour accéder à cette recherche.')
     if parsed.path == '/splashui/challenge' or any(word in title.lower() for word in ('just a moment','attention required','pardon our interruption','security measure','captcha')):

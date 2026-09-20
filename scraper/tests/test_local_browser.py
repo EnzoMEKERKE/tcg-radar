@@ -16,6 +16,11 @@ spec.loader.exec_module(helper)
 class TargetClosedError(Exception): pass
 
 
+def test_cardmarket_pagination_survives_sanitization_without_account_data():
+    fragment=helper.public_fragment('<form><input value="secret"></form><a rel="next" href="?site=2">Next</a>')
+    assert '?site=2' in fragment and 'secret' not in fragment
+
+
 class FakePage:
     def __init__(self): self.closed=False;self.url='about:blank';self.visited=[]
     def is_closed(self):return self.closed
@@ -80,7 +85,7 @@ def test_closed_single_tab_reloads_same_search(monkeypatch,tmp_path):
 @pytest.mark.parametrize('error',[TargetClosedError('Closed'),RuntimeError('Launch failed')])
 def test_read_failure_returns_recovery_message_not_http_500(monkeypatch,error):
     browser=helper.LocalBrowser(FakeSession)
-    async def fail(url):raise error
+    async def fail(url,**kwargs):raise error
     monkeypatch.setattr(browser,'open',fail)
     monkeypatch.setattr(helper,'browser',browser)
     with TestClient(helper.app,base_url='http://localhost') as client:
@@ -177,4 +182,16 @@ def test_status_remains_available_when_browser_is_unresponsive():
         result=await asyncio.wait_for(browser.status(),2.5)
         assert result['available'] and len(result['pages'])==3
         assert all(row['status']=='waiting' for row in result['pages'])
+    asyncio.run(run())
+
+
+def test_read_refreshes_page_and_rejects_removed_sold_filter(monkeypatch):
+    async def run():
+        page=FakePage()
+        page.url='https://www.ebay.fr/sch/i.html?_nkw=Pikachu'
+        calls=[]
+        async def open_page(url,force=False):calls.append(force);return page
+        monkeypatch.setattr(helper.browser,'open',open_page)
+        result=await helper.read_page(helper.ReadRequest(url=page.url+'&LH_Sold=1&LH_Complete=1'))
+        assert calls==[True] and result['status']=='unavailable'
     asyncio.run(run())

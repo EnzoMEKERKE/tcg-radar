@@ -1,7 +1,7 @@
 """eBay and Cardmarket selectors ported from pokedeals-v2, with strict evidence checks."""
 import re
 from datetime import datetime, timezone
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, parse_qs
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
 from app.services.product_page import amount
@@ -69,10 +69,14 @@ def parse_ebay(html, sold=False):
                 if re.search(r'shipping|livraison',value,re.I) and (re.match(r'\s*\+',value) or re.search(r'free|gratuit',value,re.I)):
                     shipping_text = value
                     break
+        listing_id = re.search(r'/itm/(?:[^/?]+/)?(\d+)', link['href'])
+        seller_link = item.select_one('a[href*="/usr/"]')
+        seller = seller_link.get_text(' ',strip=True) if seller_link else ''
         try:
             result.append(Listing(source='ebay',title=title,url=link['href'].split('?')[0],price=price,currency=currency,
                 shipping=shipping_of(shipping_text),
                 language=language_of(title),condition=condition,sold=sold,sold_at=sold_at,
+                listing_id=listing_id[1] if listing_id else '',seller=seller[:120],
                 price_exact=not bool(re.search(r'best offer accepted|offre acceptee|prix accepte',flat(raw))),
                 available=not bool(re.search(r'out of stock|rupture|sold out',flat(raw)))))
         except (ValidationError,KeyError): continue
@@ -84,19 +88,48 @@ def product_links(html, base):
     return list(dict.fromkeys(urljoin(base,a['href']).split('#')[0] for a in soup.select('a[href*="/Products/Singles/"]') if urlsplit(urljoin(base,a['href'])).hostname == 'www.cardmarket.com'))
 
 
+def cardmarket_next_page(html, url):
+    soup = BeautifulSoup(html,'html.parser')
+    base = urlsplit(url)
+    try:
+        current = int(parse_qs(base.query).get('site',['1'])[0])
+    except ValueError:
+        return None
+    for anchor in soup.select('a[rel="next"], .pagination a[href]'):
+        if anchor.find_parent(class_='disabled'):
+            continue
+        target = urljoin(url,anchor.get('href',''))
+        parsed = urlsplit(target)
+        if parsed.scheme != 'https' or parsed.netloc != base.netloc or parsed.path != base.path:
+            continue
+        params = parse_qs(parsed.query)
+        original = parse_qs(base.query)
+        if {k:v for k,v in params.items() if k!='site'} != {k:v for k,v in original.items() if k!='site'}:
+            continue
+        try:
+            following = int(params.get('site',['1'])[0])
+        except ValueError:
+            continue
+        if following == current+1:
+            return target
+    return None
+
+
 def parse_cardmarket(html,url):
     soup = BeautifulSoup(html,'html.parser')
     title = text(soup,'h1')
     number = ''
     for dt in soup.select('dt'):
-        if re.search(r'number|numero',flat(dt.get_text())):
+        if re.search(r'number|numero|nombre',flat(dt.get_text())):
             dd = dt.find_next_sibling('dd')
             if dd: number = dd.get_text(' ',strip=True)
     result = []
     for row in soup.select('.article-row'):
         price = amount(text(row,'.price-container .font-weight-bold, .price-container .fw-bold, .col-price'))
         if not price or not title: continue
-        tips = ' '.join((n.get('data-original-title') or n.get('data-bs-original-title') or n.get('title') or '') for n in row.select('[title], [data-original-title], [data-bs-original-title]'))
+        # Seller location and comments are not evidence of the card's language.
+        attributes = row.select_one('.product-attributes')
+        tips = ' '.join((n.get('data-original-title') or n.get('data-bs-original-title') or n.get('title') or '') for n in attributes.select('[title], [data-original-title], [data-bs-original-title]')) if attributes else ''
         attrs = text(row,'.product-attributes')+' '+tips
         language = language_of(attrs)
         condition = condition_of(attrs)

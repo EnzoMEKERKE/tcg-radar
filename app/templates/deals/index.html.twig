@@ -1,7 +1,26 @@
 {% extends 'base.html.twig' %}
 {% block title %}Bonnes affaires Pokémon · TCG Radar{% endblock %}
 {% block body %}
-<link rel="stylesheet" href="/deals.css"><script src="/deals.js" defer></script>
+<link rel="stylesheet" href="/deals.css"><script src="/deals.js" defer></script><script src="/cardmarket-prices.js" defer></script>
+<section class="panel" aria-labelledby="cm-prices-title">
+<p class="eyebrow">DONNÉES PUBLIÉES PAR CARDMARKET</p><h2 id="cm-prices-title">Prix des cartes Pokémon</h2>
+<p>Consultez le prix bas, la tendance et les moyennes du guide quotidien Cardmarket. Les noms du catalogue sont en anglais.</p>
+<form id="cm-prices-form"><div class="cm-filter-grid">
+<label class="cm-query">Carte ou identifiant Cardmarket <input name="q" maxlength="120" value="Pikachu" placeholder="Pikachu, Charizard, 273753…"></label>
+<label>Extension <select name="expansion"><option value="">Toutes les extensions</option></select></label>
+<label>Trier par <select name="sort"><option value="recent">Identifiant décroissant</option><option value="price_asc">Prix croissant</option><option value="price_desc">Prix décroissant</option><option value="name">Nom A → Z</option></select></label>
+<label>Prix de référence <select name="metric"><option value="trend">Tendance</option><option value="low">Prix bas</option><option value="avg1">Moyenne 1 jour</option><option value="avg7">Moyenne 7 jours</option><option value="avg30">Moyenne 30 jours</option></select></label>
+<label>Série de prix <select name="variant"><option value="standard">Principale</option><option value="holo">« Holo » du guide</option></select></label>
+<label>Prix minimum (€) <input name="min_price" type="number" min="0" max="1000000" step="0.01" placeholder="Sans minimum"></label>
+<label>Prix maximum (€) <input name="max_price" type="number" min="0" max="1000000" step="0.01" placeholder="Sans maximum"></label>
+</div><div class="discovery-controls"><button type="submit">Appliquer les filtres</button><button type="reset">Réinitialiser</button><span id="cm-filter-summary" class="muted"></span></div>
+<p class="muted">Le budget et le tri portent sur le prix de référence et la série sélectionnés. Un prix manquant est exclu du budget et placé en fin de tri.</p></form>
+<p id="cm-prices-status" role="status" aria-live="polite">Chargement des prix Cardmarket…</p>
+<p class="muted">Ces prix agrégés ne précisent ni vendeur, ni langue, ni état, ni port. Ils ne permettent pas une comparaison par langue et sont exclus des calculs de marge. Les comparaisons exigent la même langue confirmée sur l’offre Cardmarket et la vente eBay.</p>
+<div id="cm-prices-results" class="discovery-results"></div>
+<dialog id="cm-image-dialog"><button type="button" aria-label="Fermer l’aperçu">Fermer ×</button><img alt=""><p></p></dialog>
+<div class="discovery-controls"><button id="cm-prices-prev" type="button" hidden>Précédent</button><span id="cm-prices-page"></span><button id="cm-prices-next" type="button" hidden>Suivant</button></div>
+</section>
 <section class="hero deals-hero"><div><p class="eyebrow">POKÉDEALS × TCG RADAR</p><h1>Les écarts de prix.<br>La marge en plus.</h1><p>Repérez les cartes Pokémon à acheter sur Cardmarket pour les revendre sur eBay, ou l’inverse. Comparez la même carte, dans la même langue et le même état.</p></div><div class="deals-how"><b>Cardmarket ⇄ eBay</b><span>Ventes eBay réalisées et datées</span><span>Offres Cardmarket de vendeurs</span><span>Frais et marge de sécurité déduits</span></div></section>
 <section class="panel explore" aria-labelledby="deals-title"><p class="eyebrow">ANALYSE DES CARTES À L’UNITÉ</p><h2 id="deals-title">Trouver une bonne affaire</h2>
 <div class="local-browser-panel"><button type="button" id="prepare-local-browser">Ouvrir la session Chrome locale</button><p id="local-browser-status" role="status">Vérification du navigateur local…</p><p class="muted">Si une connexion ou une vérification est demandée, termine-la dans la fenêtre Chrome dédiée puis lance l’analyse. La session reste ouverte entre les recherches.</p></div>
