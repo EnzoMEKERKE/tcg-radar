@@ -1,0 +1,11 @@
+<p id="discovery-status" role="status"></p>
+<div id="discovery-filters" class="discovery-filters hidden">
+    <span class="sort-indicator">↑ Prix par display croissant</span>
+    <label>Expédition <select id="discovery-origin"><option value="">Tous les départs</option><option value="FR">France</option><option value="EU">Union européenne</option><option value="outside_eu">Hors UE</option><option value="unknown">À confirmer</option></select></label>
+    <label><input type="checkbox" id="discovery-new"> Nouvelles sources uniquement</label>
+    <label><input type="checkbox" id="discovery-other"> Inclure les autres langues détectées</label>
+    <button type="button" id="discovery-reset">Réinitialiser les filtres</button>
+    <p id="discovery-count" class="muted" aria-live="polite"></p>
+</div>
+<p class="muted">Frais indiqués pour la France métropolitaine. La langue des cartes et le pays de la boutique ne prouvent pas le pays d’expédition. <a href="https://www.douane.gouv.fr/demarche/vous-achetez-sur-internet" target="_blank" rel="noopener noreferrer">Règles de la douane ↗</a></p>
+<div id="discovery-results" class="discovery-results" aria-busy="false"></div>

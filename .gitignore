@@ -1,0 +1,11 @@
+.validation/
+.docker-local/
+app/vendor/
+app/var/
+__pycache__/
+.pytest_cache/
+scraper/live-validation.json
+scraper/inspect-*.html
+scraper/product-*.html
+.env
+.local-browser/

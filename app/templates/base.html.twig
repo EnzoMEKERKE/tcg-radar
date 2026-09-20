@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}TCG Radar · V5{% endblock %}</title><link rel="stylesheet" href="/v5.css"><link rel="stylesheet" href="/ui.css"><script src="/v5.js" defer></script></head>
+<body><header class="nav"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">◈</span> TCG RADAR <small>LE COMPARATEUR</small></a><nav><a href="/">Explorer</a><a href="/#catalogue">Catalogue</a><button id="show-alerts" type="button">Baisses de prix <span id="alert-count">0</span></button></nav></header>
+<div class="deals-nav"><a href="/deals">Bonnes affaires Pokémon · eBay ⇄ Cardmarket</a></div>
+<main>{% block body %}{% endblock %}</main>
+<dialog id="alerts"><div class="section-head"><h2>Baisses de prix</h2><button id="close-alerts" type="button">Fermer</button></div><p class="muted">Baisses observées lors des collectes. Prix estimés par display ; vérifiez la disponibilité sur la page du set.</p><div id="alert-list" aria-live="polite">Chargement…</div></dialog>
+<footer>TCG Radar · Prix en euros, livraison en France. Les estimations ne remplacent pas le montant confirmé par la boutique.</footer></body></html>

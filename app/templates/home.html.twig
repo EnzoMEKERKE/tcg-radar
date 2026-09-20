@@ -1,0 +1,29 @@
+{% extends 'base.html.twig' %}
+{% block body %}
+<section class="hero"><div><div class="eyebrow">LE SCELLÉ, EN TOUTE CLARTÉ</div><h1>Le bon set.<br>Au bon prix.</h1><p class="muted">Explorez de nouvelles boutiques et comparez les displays et les cases.<br>Un set en tête ? Lancez votre recherche, même sans offre au catalogue.</p></div><div class="stats"><div><b>{{ sets|length }}</b><small>références</small></div><div><b>{{ offerCount }}</b><small>offres récentes</small></div><div><b>{{ storeCount }}</b><small>boutiques collectées</small></div></div></section>
+<section class="panel discovery explore" aria-labelledby="discovery-title">
+<div class="eyebrow">01 / EXPLORER</div><h2 id="discovery-title">Quel set recherchez-vous ?</h2>
+<p class="muted">Les prix sont lus sur les fiches marchandes et triés par display, du moins cher au plus cher, hors livraison et frais d’import. Les résultats incomplets restent en fin de liste. Vérifiez le montant final chez le marchand.</p>
+<form id="discovery-form">
+<div class="explore-fields">
+<label for="discovery-game">Jeu<select id="discovery-game"><option value="Pokemon">Pokémon</option><option>One Piece</option><option>Yu-Gi-Oh!</option><option>Gundam</option></select></label>
+<label for="discovery-set">Set · nom et code<select id="discovery-set" required aria-describedby="set-choice-status"><option value="">Choisir un set…</option>{% for row in sets %}<option value="{{ row.product.id }}" data-name="{{ row.product.setName }}" data-code="{{ row.product.setCode }}" data-game="{{ row.product.game }}" data-language="{{ row.product.language }}" data-offers="{{ row.count }}">{{ row.product.setCode }} · {{ row.product.setName }}{{ row.count ? ' · '~row.count~' offre(s) récente(s)' : '' }}</option>{% endfor %}</select></label>
+<label for="discovery-language">Langue du produit<select id="discovery-language"><option value="FR">Français</option><option value="JP">Japonais</option><option value="EN">Anglais</option></select></label>
+</div>
+<div class="set-choice-info"><span id="set-choice-status" class="muted" role="status"></span><a id="set-choice-offers" class="button hidden" href="/">Voir les offres collectées</a></div>
+<p id="catalog-status" class="muted" role="status">Catalogue en cache. Vérification hebdomadaire des nouveaux sets lors de votre utilisation.</p>
+<label class="manual-choice"><input type="checkbox" id="discovery-manual"> Mon set n’est pas dans la liste</label>
+<label id="discovery-manual-field" class="hidden" for="discovery-name">Nom ou code à rechercher<input id="discovery-name" disabled maxlength="180" placeholder="Ex. OP-09…"></label>
+<label for="discovery-keywords">Mots-clés supplémentaires (facultatif)</label>
+<div class="discovery-controls"><input id="discovery-keywords" maxlength="80" placeholder="Ex. livraison France, case, précommande…"><button class="primary" type="submit">Rechercher les offres sur le web</button></div>
+</form>
+{% include '_discovery_results.html.twig' %}
+<details id="discovery-fallback" class="hidden"><summary>Ouvrir la recherche dans un moteur</summary><ul class="search-links"></ul></details>
+</section>
+<div class="section-head catalogue-heading" id="catalogue"><div><div class="eyebrow">02 / LE CATALOGUE</div><h2>Les sets à suivre</h2></div><small>Prix rendus estimés · offres vérifiées depuis moins de 48 h</small></div>
+<div class="toolbar"><input id="q" type="search" placeholder="Rechercher un set, un code…" aria-label="Rechercher un set"><select id="game" aria-label="Jeu"><option value="">Tous les jeux</option><option>Pokemon</option><option>One Piece</option><option>Yu-Gi-Oh!</option><option>Gundam</option></select><select id="lang" aria-label="Langue"><option value="">Toutes les langues</option><option>FR</option><option>JP</option><option>EN</option><option value="UNK">Non identifiée</option></select><select id="sort" aria-label="Trier"><option value="price">Prix par display ↑</option><option value="name">Nom du set</option><option value="offers">Nombre d’offres</option></select><label><input type="checkbox" id="available"> Avec offres</label></div>
+<p id="visible" class="muted" aria-live="polite"></p>
+<section class="grid" id="grid">{% for row in sets %}{% set p=row.product %}<article class="card" data-name="{{ p.setName|lower }}" data-text="{{ (p.game~' '~p.setCode~' '~p.setName)|lower }}" data-game="{{ p.game }}" data-lang="{{ p.language }}" data-price="{{ row.best ? row.best.unitCost : 999999999 }}" data-offers="{{ row.count }}"><div class="top"><span class="tag">{{ p.game }} · {{ p.language }}</span><small>{{ p.setCode }}</small></div><h2><a href="/sets/{{ p.id }}">{{ p.setName }}</a></h2><small>{{ p.canonical ? 'Catalogue référencé' : 'Correspondance à vérifier' }}</small><div class="price">{{ row.best ? row.best.unitCost|number_format(2, ',', ' ')~' €' : '—' }} <small>/ display</small></div><small>{% if row.best %}{{ row.best.shippingKnown ? 'Port inclus dans l’estimation' : 'Port inconnu · non inclus' }}{% else %}Pas de prix comparable{% endif %}</small><div class="bottom"><small>{{ row.count }} offre{{ row.count > 1 ? 's' : '' }}</small><a href="/sets/{{ p.id }}">Comparer →</a></div></article>{% endfor %}</section>
+<div class="empty hidden" id="no-results"><p>Aucun set ne correspond à ces filtres.</p><button type="button" id="reset-filters">Réinitialiser les filtres</button></div>
+{% if sets is empty %}<div class="empty"><h2>Aucune offre collectée pour le moment</h2><p>La recherche web ci-dessus est déjà disponible. Les comparaisons et l’historique apparaîtront au fil des collectes.</p></div>{% endif %}
+{% endblock %}

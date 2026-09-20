@@ -1,0 +1,13 @@
+{% set origin = o.shippingOrigin %}
+<div class="shipping-origin">
+    <strong>Expédition : {{ origin.country_label|default('À confirmer') }}{% if origin.region|default('unknown') == 'EU' %} · UE{% elseif origin.region|default('unknown') == 'outside_eu' %} · Hors UE{% endif %}</strong>
+    <small>{{ origin.tax_message|default('Pays de départ non confirmé : frais d’import à vérifier pour la France métropolitaine.') }}</small>
+    {% if origin.sources|default([])|length %}
+    <details><summary>Sources de l’expédition</summary>
+    {% for source in origin.sources %}
+        <small>{{ source.evidence }} · Vérifié le {{ source.checked_at }}</small>
+        {% if source.url starts with 'https://' or source.url starts with 'http://' %}<a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">Source marchand ↗</a>{% endif %}
+    {% endfor %}
+    </details>
+    {% endif %}
+</div>

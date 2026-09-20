@@ -1,0 +1,180 @@
+import asyncio
+import importlib.util
+from pathlib import Path
+import pytest
+import httpx
+from fastapi.testclient import TestClient
+from app.deals.browser import MarketplaceAccessError
+from app.deals.local_browser import LocalOrBrowserPages
+from app.deals.parsers import parse_ebay
+
+spec=importlib.util.spec_from_file_location('local_deals_helper',Path(__file__).resolve().parents[2]/'tools/local_deals_browser.py')
+helper=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helper)
+
+
+class TargetClosedError(Exception): pass
+
+
+class FakePage:
+    def __init__(self): self.closed=False;self.url='about:blank';self.visited=[]
+    def is_closed(self):return self.closed
+    async def title(self):return 'Pikachu'
+    async def goto(self,url,**kwargs):self.url=url;self.visited.append(url)
+    async def wait_for_timeout(self,ms):pass
+
+
+class FakeContext:
+    def __init__(self):self.closed=False;self.listeners={};self.created=[]
+    def on(self,event,callback):self.listeners[event]=callback
+    async def new_page(self):
+        if self.closed:raise TargetClosedError('Closed')
+        page=FakePage();self.created.append(page);return page
+    def shut(self,notify=True):
+        self.closed=True
+        for page in self.created:page.closed=True
+        if notify and 'close' in self.listeners:self.listeners['close']()
+
+
+class FakeSession:
+    def __init__(self,**kwargs):self.options=kwargs;self.context=FakeContext()
+    async def start(self):pass
+    async def close(self):self.context.shut()
+
+
+@pytest.mark.parametrize('notify',[True,False])
+def test_closed_browser_restarts_with_same_profile(monkeypatch,tmp_path,notify):
+    monkeypatch.setattr(helper,'ROOT',tmp_path)
+    sessions=[]
+    def factory(**kwargs):
+        session=FakeSession(**kwargs);sessions.append(session);return session
+    async def run():
+        browser=helper.LocalBrowser(factory)
+        url='https://www.ebay.fr/sch/i.html?_nkw=Pikachu'
+        first=await browser.open(url)
+        sessions[0].context.shut(notify)
+        second=await browser.open(url)
+        assert second is not first and second.visited==[url]
+        assert len(sessions)==2
+        assert sessions[0].options['user_data_dir']==sessions[1].options['user_data_dir']
+        assert not browser.closed
+        await browser.reset()
+        assert (await browser.status())['browser_open'] is False
+    asyncio.run(run())
+
+
+def test_closed_single_tab_reloads_same_search(monkeypatch,tmp_path):
+    monkeypatch.setattr(helper,'ROOT',tmp_path)
+    async def run():
+        browser=helper.LocalBrowser(FakeSession)
+        url='https://www.ebay.fr/sch/i.html?_nkw=Pikachu'
+        first=await browser.open(url)
+        session=browser.session
+        first.closed=True
+        second=await browser.open(url)
+        assert browser.session is session and second.visited==[url]
+        await browser.reset()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('error',[TargetClosedError('Closed'),RuntimeError('Launch failed')])
+def test_read_failure_returns_recovery_message_not_http_500(monkeypatch,error):
+    browser=helper.LocalBrowser(FakeSession)
+    async def fail(url):raise error
+    monkeypatch.setattr(browser,'open',fail)
+    monkeypatch.setattr(helper,'browser',browser)
+    with TestClient(helper.app,base_url='http://localhost') as client:
+        result=client.post('/read',json={'url':'https://www.ebay.fr/sch/i.html'},headers={'X-TCG-Local':'browser'})
+        assert result.status_code==200 and result.json()['status']=='unavailable'
+        assert 'Chrome' in result.json()['message']
+
+
+def test_only_listing_fragments_leave_local_browser():
+    html='''<header>Private account name <input value="SECRET"></header><script>token="PRIVATE_TOKEN"</script>
+    <li class="s-card"><h3 class="s-card__title">Pikachu 25/102 holo FR NM</h3><a class="s-card__link" href="https://www.ebay.fr/itm/123456789012">Offer</a><span class="s-card__price">50 EUR</span><button data-token="SECRET">Buy</button><script>cookie="SECRET"</script></li>'''
+    fragment=helper.public_fragment(html)
+    assert all(value not in fragment for value in ['SECRET','PRIVATE_TOKEN','Private account name','<script','<input','<button'])
+    rows=parse_ebay(fragment)
+    assert len(rows)==1 and rows[0].price==50
+
+
+def test_local_helper_rejects_cross_site_mutations_and_arbitrary_urls():
+    with TestClient(helper.app,base_url='http://localhost') as client:
+        assert client.post('/prepare',json={}).status_code==403
+        assert client.post('/read',json={'url':'https://evil.example/'},headers={'X-TCG-Local':'browser'}).status_code==400
+        assert client.get('/status').json()['available'] is True
+        assert client.get('/status',headers={'Host':'evil.example'}).status_code==403
+
+
+def test_local_reader_keeps_login_required_instead_of_using_anonymous_fallback(monkeypatch):
+    async def status():return {'available':True}
+    monkeypatch.setattr('app.deals.local_browser.local_status',status)
+    monkeypatch.setenv('DEALS_LOCAL_BROWSER_URL','http://localhost:8766')
+    transport=httpx.MockTransport(lambda r:httpx.Response(200,json={'status':'login_required','message':'Connecte-toi dans Chrome.'}))
+    original=httpx.AsyncClient
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:original(transport=transport,**kwargs))
+    async def run():
+        reader=LocalOrBrowserPages()
+        with pytest.raises(MarketplaceAccessError) as error:
+            await reader.product('https://www.ebay.fr/sch/i.html?_nkw=Pikachu')
+        assert error.value.status=='login_required'
+        assert reader.fallback.driver is None
+        await reader.close()
+    asyncio.run(run())
+
+
+def test_local_reader_returns_only_verified_page_payload(monkeypatch):
+    async def status():return {'available':True}
+    monkeypatch.setattr('app.deals.local_browser.local_status',status)
+    monkeypatch.setenv('DEALS_LOCAL_BROWSER_URL','http://localhost:8766')
+    url='https://www.ebay.fr/sch/i.html?_nkw=Pikachu'
+    original=httpx.AsyncClient
+    transport=httpx.MockTransport(lambda r:httpx.Response(200,json={'status':'ok','html':'<h1>Pikachu</h1>','url':url}))
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:original(transport=transport,**kwargs))
+    async def run():
+        assert await LocalOrBrowserPages().product(url)==('<h1>Pikachu</h1>',url)
+    asyncio.run(run())
+
+
+def test_unavailable_configured_browser_does_not_switch_session(monkeypatch):
+    async def status(): return {'available':False}
+    monkeypatch.setattr('app.deals.local_browser.local_status',status)
+    monkeypatch.setenv('DEALS_LOCAL_BROWSER_URL','http://localhost:8766')
+    async def run():
+        reader=LocalOrBrowserPages()
+        with pytest.raises(MarketplaceAccessError,match='session Chrome locale'):
+            await reader.product('https://www.ebay.fr/sch/i.html?_nkw=Pikachu')
+        assert reader.fallback.driver is None and reader.remote is None
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('url',[
+    'https://signin.ebay.fr/ws/eBayISAPI.dll?SignIn',
+    'https://www.ebay.fr/splashui/challenge',
+    'https://www.cardmarket.com/fr/Login',
+])
+def test_prepare_preserves_manual_login_and_challenge(monkeypatch,tmp_path,url):
+    monkeypatch.setattr(helper,'ROOT',tmp_path)
+    async def run():
+        browser=helper.LocalBrowser(FakeSession)
+        search='https://www.cardmarket.com/fr/Pokemon/Products/Search' if 'cardmarket' in url else 'https://www.ebay.fr/sch/i.html'
+        page=await browser.open(search)
+        page.url=url
+        await browser.open(search+'?query=changed',force=True)
+        await browser.prepare('Pikachu')
+        assert page.url==url and page.visited==[search]
+        await browser.reset()
+    asyncio.run(run())
+
+
+def test_status_remains_available_when_browser_is_unresponsive():
+    async def run():
+        browser=helper.LocalBrowser(FakeSession)
+        page=FakePage()
+        async def stuck(): await asyncio.Event().wait()
+        page.title=stuck
+        browser.pages={'ebay_sold':page,'ebay_active':page,'cardmarket':page}
+        result=await asyncio.wait_for(browser.status(),2.5)
+        assert result['available'] and len(result['pages'])==3
+        assert all(row['status']=='waiting' for row in result['pages'])
+    asyncio.run(run())

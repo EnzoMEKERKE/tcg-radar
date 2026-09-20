@@ -1,0 +1,20 @@
+use_default_settings:
+  engines:
+    keep_only: [bing, yahoo]
+engines:
+  - name: bing
+    disabled: false
+  - name: yahoo
+    disabled: false
+server:
+  secret_key: "tcg-radar-private-local-search"
+  bind_address: "0.0.0.0"
+  port: 8080
+  limiter: false
+  image_proxy: false
+search:
+  formats: [html, json]
+  safe_search: 1
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 12.0

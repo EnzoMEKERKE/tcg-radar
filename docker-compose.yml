@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tcg
+      POSTGRES_USER: tcg
+      POSTGRES_PASSWORD: tcg
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tcg"]
+      interval: 5s
+      retries: 10
+  app:
+    build: ./app
+    environment:
+      APP_ENV: prod
+      APP_SECRET: ${APP_SECRET:-local-change-me}
+      INGEST_TOKEN: ${INGEST_TOKEN:-dev-change-me}
+      DATABASE_URL: postgresql://tcg:tcg@db:5432/tcg?serverVersion=16&charset=utf8
+      SCRAPER_URL: http://scraper:8000
+    depends_on:
+      db: {condition: service_healthy}
+  scraper:
+    build: ./scraper
+    environment:
+      BACKEND_INGEST_URL: http://nginx/api/ingest
+      INGEST_TOKEN: ${INGEST_TOKEN:-dev-change-me}
+      SHIPPING_RULES_JSON: ${SHIPPING_RULES_JSON:-}
+      CATALOG_CACHE: /data/catalog.json
+      DISCOVERY_CACHE: /data/discovery.sqlite
+      CRAWL_STATE_DIR: /data/crawl-progress
+      DEALS_CACHE: /data/deals.sqlite
+      DEALS_LOCAL_BROWSER_URL: http://host.docker.internal:8766
+      SEARXNG_URL: http://search:8080
+      BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
+      DISCOVERY_PAGES: ${DISCOVERY_PAGES:-3}
+      DISCOVERY_MAX_RESULTS: ${DISCOVERY_MAX_RESULTS:-120}
+      BROWSER_MAX_PAGES: ${BROWSER_MAX_PAGES:-10}
+    volumes: ["catalog:/data"]
+    ports: ["127.0.0.1:8001:8000"]
+  search:
+    image: searxng/searxng:latest
+    profiles: [discovery]
+    volumes:
+      - ./infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+  nginx:
+    image: nginx:alpine
+    ports: ["8080:80"]
+    volumes:
+      - ./app/public:/var/www/html/public:ro
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [app]
+  scheduler:
+    build: ./scraper
+    profiles: [automation]
+    command: [python, -m, app.scheduler]
+    environment:
+      CRAWL_INTERVAL_SECONDS: "21600"
+      CRAWL_MAX_PAGES: "1000"
+    depends_on: [scraper, nginx]
+    restart: unless-stopped
+volumes:
+  pgdata:
+  catalog:

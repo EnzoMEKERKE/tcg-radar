@@ -1,0 +1,38 @@
+{% extends 'base.html.twig' %}
+{% block title %}Bonnes affaires Pokémon · TCG Radar{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="/deals.css"><script src="/deals.js" defer></script>
+<section class="hero deals-hero"><div><p class="eyebrow">POKÉDEALS × TCG RADAR</p><h1>Les écarts de prix.<br>La marge en plus.</h1><p>Repérez les cartes Pokémon à acheter sur Cardmarket pour les revendre sur eBay, ou l’inverse. Comparez la même carte, dans la même langue et le même état.</p></div><div class="deals-how"><b>Cardmarket ⇄ eBay</b><span>Ventes eBay réalisées et datées</span><span>Offres Cardmarket de vendeurs</span><span>Frais et marge de sécurité déduits</span></div></section>
+<section class="panel explore" aria-labelledby="deals-title"><p class="eyebrow">ANALYSE DES CARTES À L’UNITÉ</p><h2 id="deals-title">Trouver une bonne affaire</h2>
+<div class="local-browser-panel"><button type="button" id="prepare-local-browser">Ouvrir la session Chrome locale</button><p id="local-browser-status" role="status">Vérification du navigateur local…</p><p class="muted">Si une connexion ou une vérification est demandée, termine-la dans la fenêtre Chrome dédiée puis lance l’analyse. La session reste ouverte entre les recherches.</p></div>
+<form id="deals-form"><div class="deals-fields">
+<label class="deals-query">Carte ou extension <input name="query" maxlength="120" placeholder="Ex. Dracaufeu 199/165 — vide pour un scan automatique"></label>
+<label>Langue<select name="language"><option value="FR">Français</option><option value="EN">Anglais</option><option value="JP">Japonais</option><option value="ALL">Toutes, comparées séparément</option></select></label>
+<label>État minimum<select name="condition_min"><option value="NM">Near Mint (NM)</option><option value="MT">Mint (MT)</option><option value="EX">Excellent (EX)</option><option value="GD">Good (GD)</option><option value="LP">Light Played (LP)</option><option value="PL">Played (PL)</option><option value="PO">Poor (PO)</option></select></label>
+<label>Sens de comparaison<select name="direction"><option value="all">Dans les deux sens</option><option value="cm_to_ebay">Acheter CM → vendre eBay</option><option value="ebay_to_cm">Acheter eBay → vendre CM</option></select></label>
+<label>Marge minimale (€)<input name="min_profit" type="number" min="0" max="100000" step="0.5" value="5" required></label>
+<label>Rendement minimal (%)<input name="min_roi" type="number" min="0" max="1000" step="1" value="10" required></label>
+</div>
+<details class="deals-assumptions"><summary>Frais, budget de collecte et qualité des références</summary><p class="muted">Les valeurs ci-dessous sont des hypothèses modifiables, pas des tarifs garantis. La marge est estimée avant impôts ; ajoutez les éventuels frais d’import et autres coûts. Le port d’achat renseigné sert seulement lorsqu’il est absent de l’annonce.</p><div class="deals-fields">
+<label>Commission eBay (%)<input name="ebay_fee_pct" type="number" min="0" max="50" step="0.1" value="13" required></label>
+<label>Commission Cardmarket (%)<input name="cm_fee_pct" type="number" min="0" max="50" step="0.1" value="5" required></label>
+<label>Frais fixes par vente (€)<input name="fixed_fee" type="number" min="0" max="100" step="0.01" value="0.35" required></label>
+<label>Port d’achat estimé (€)<input name="buy_shipping" type="number" min="0" max="1000" step="0.1" value="3" required></label>
+<label>Port de revente à votre charge (€)<input name="sell_shipping" type="number" min="0" max="1000" step="0.1" value="3" required></label>
+<label>Emballage (€)<input name="packaging" type="number" min="0" max="100" step="0.1" value="0.5" required></label>
+<label>Autres coûts par carte (€)<input name="other_costs" type="number" min="0" max="10000" step="0.1" value="0" required></label>
+<label>Marge de sécurité sur le prix (%)<input name="safety_pct" type="number" min="0" max="90" step="1" value="5" required></label>
+<label>Minimum de ventes eBay<input name="min_sales" type="number" min="1" max="100" value="3" required></label>
+<label>Ventes sur les derniers jours<input name="sales_days" type="number" min="1" max="365" value="90" required></label>
+<label>Pages par recherche<input name="pages" type="number" min="1" max="10" value="3" required></label>
+<label>Fiches Cardmarket maximum<input name="max_cards" type="number" min="1" max="50" value="15" required></label>
+</div></details>
+<div class="discovery-controls"><button class="primary" type="submit">Analyser les bonnes affaires</button><label><input type="checkbox" name="force"> Actualiser les données en cache</label></div>
+<p class="muted">Cache de 3 heures, offres actives de moins de 24 h. Les cartes gradées, lots et identités incertaines sont exclus. Le scan peut durer jusqu’à 3 minutes.</p></form>
+</section>
+<section class="deals-results" aria-label="Résultats de l’analyse"><p id="deals-status" role="status" aria-live="polite">Lancez un scan automatique ou recherchez une carte précise.</p><div id="deals-sources"></div><div id="deals-summary"></div><div id="deals-list" class="discovery-results"></div><details id="deals-exclusions" hidden><summary>Pourquoi certaines observations sont exclues</summary><div></div></details></section>
+<section class="panel deals-import"><h2>Analyser vos relevés</h2><p>Si une plateforme bloque la collecte, importez vos ventes réalisées et vos annonces dans un même CSV. Les observations importées sont identifiées comme telles et ne sont pas revérifiées en ligne.</p><p><a href="/deals-template.csv" download>Télécharger le modèle CSV</a> · <a href="https://www.ebay.fr/sch/i.html?_nkw=pokemon&amp;LH_Sold=1&amp;LH_Complete=1" target="_blank" rel="noopener noreferrer">Voir les ventes eBay</a> · <a href="https://www.cardmarket.com/fr/Pokemon/Products/Singles" target="_blank" rel="noopener noreferrer">Voir les offres Cardmarket</a></p>
+<form id="deals-import-form"><label>Fichier CSV (2 Mo, 2 000 observations maximum)<input id="deals-file" type="file" accept=".csv,text/csv" required></label><button type="submit">Importer et analyser avec les filtres ci-dessus</button></form>
+<details><summary>Comment remplir le fichier</summary><p>Une ligne par offre ou vente. <code>source</code> : ebay ou cardmarket ; <code>sold</code> : true pour une vente réalisée, false pour une annonce active. <code>sold_at</code> et <code>observed_at</code> : dates ISO, par exemple 2026-09-19T12:00:00Z. Renseignez le numéro complet (199/165), l’extension si connue, la variante exacte (holo, reverse, non-holo…), la langue (FR/EN/JP) et l’état (MT/NM/EX/GD/LP/PL/PO). Utilisez les mêmes identifiants pour une même carte.</p><p>Le prix exclut la livraison. Un port vide reste inconnu. Seuls les prix en EUR sont comparés. Une offre négociée dont le montant final est inconnu doit avoir <code>price_exact=false</code>. Pour Cardmarket, renseignez le vendeur ou l’identifiant d’annonce. Les historiques CSV natifs doivent être adaptés aux colonnes du modèle.</p></details>
+</section>
+{% endblock %}

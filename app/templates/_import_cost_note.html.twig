@@ -1,0 +1,5 @@
+{% if o.shippingOrigin.tax_status|default('unknown') == 'extra' %}
+    <small>TVA estimée incluse · droits et frais transporteur non chiffrés</small>
+{% elseif o.shippingOrigin.tax_status|default('unknown') not in ['eu', 'included'] %}
+    <small>Frais d’import non déterminés</small>
+{% endif %}
