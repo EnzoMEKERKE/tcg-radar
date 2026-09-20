@@ -40,6 +40,18 @@ final class DealsController extends AbstractController
         return $this->proxy($client,'GET','/deals/browser');
     }
 
+    #[Route('/api/deals/cardmarket-prices', methods:['GET'])]
+    public function cardmarketPrices(Request $request, HttpClientInterface $client): JsonResponse
+    {
+        $params=[];
+        foreach (['q','page','min_price','max_price','expansion','metric','variant','sort'] as $key) {
+            $value=$request->query->get($key);
+            if ($value!==null && $value!=='') $params[$key]=$value;
+        }
+        $query=http_build_query($params);
+        return $this->proxy($client,'GET','/deals/cardmarket-prices?'.$query);
+    }
+
     private function proxy(HttpClientInterface $client,string $method,string $path,?array $data=null): JsonResponse
     {
         try {

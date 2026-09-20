@@ -9,7 +9,7 @@ import unicodedata
 CONDITIONS = {'PO':1, 'PL':2, 'LP':3, 'GD':4, 'EX':5, 'NM':6, 'MT':7}
 LANGUAGES = {
     'FR':r'fr|vf|french|francais|francaise', 'EN':r'en|eng|english|anglais',
-    'JP':r'jp|jpn|japanese|japonais|japonaise|japan', 'DE':r'de|german|deutsch|allemand',
+    'JP':r'jp|jpn|jap|japanese|japonais|japonaise|japan', 'DE':r'de|german|deutsch|allemand',
     'IT':r'it|italian|italien|italiano', 'ES':r'es|spanish|espagnol',
     'KR':r'kr|korean|coreen', 'CN':r'cn|chinese|chinois',
 }
@@ -28,8 +28,25 @@ def flat(value):
     return unicodedata.normalize('NFKD', value.lower()).encode('ascii', 'ignore').decode()
 
 
+def language_candidates(title):
+    # Lowercase de/en/it/es are ordinary words, not proof of a card's language.
+    value = flat(title)
+    matches = set()
+    flags = {'FR':'🇫🇷', 'EN':'🇬🇧🇺🇸', 'JP':'🇯🇵', 'DE':'🇩🇪',
+             'IT':'🇮🇹', 'ES':'🇪🇸', 'KR':'🇰🇷', 'CN':'🇨🇳'}
+    for lang, pattern in LANGUAGES.items():
+        words = '|'.join(word for word in pattern.split('|') if word not in ('de','en','it','es'))
+        if re.search(r'\b(?:'+words+r')\b', value) or re.search(r'\b'+lang+r'\b', title):
+            matches.add(lang)
+        if any(flags[lang][i:i+2] in title for i in range(0,len(flags[lang]),2)):
+            matches.add(lang)
+    if re.search(r'\b(?:jap|jpn|japanese|japonais|japonaise)\b', value):
+        matches.add('JP')
+    return matches
+
+
 def language_of(title):
-    matches = [lang for lang, pattern in LANGUAGES.items() if re.search(r'\b(?:'+pattern+r')\b', flat(title))]
+    matches = list(language_candidates(title))
     return matches[0] if len(matches) == 1 else 'UNKNOWN'
 
 
@@ -47,8 +64,11 @@ def identity(listing):
     text = flat(listing.title)
     if re.search(r'\b(psa|bgs|cgc|pca|ace|graded|gradee|lot|bundle|booster|display|proxy|replica|reprint|custom|fake)\b|\bx\s*\d+\b', text):
         return None, 'lot_gradee_ou_reproduction'
-    language = listing.language if listing.language != 'UNKNOWN' else language_of(text)
-    detected_language = language_of(text)
+    candidates = language_candidates(listing.title)
+    if len(candidates) > 1:
+        return None, 'langue_ambigue'
+    language = listing.language if listing.language != 'UNKNOWN' else language_of(listing.title)
+    detected_language = language_of(listing.title)
     if listing.language != 'UNKNOWN' and detected_language != 'UNKNOWN' and detected_language != listing.language:
         return None, 'identite_contradictoire'
     condition = listing.condition

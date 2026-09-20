@@ -1,5 +1,68 @@
 # TCG Radar V5
 
+## Collecte eBay locale sans clé API
+
+Le parcours utilise Chrome local via Scrapling et BeautifulSoup pour extraire
+les annonces. Le branchement ScrapingBee est désactivé, même si une ancienne
+variable de configuration fournisseur existe. Aucun service à clé n'est appelé.
+Validation réelle : 78 annonces actives Pikachu, dont 72 avec port renseigné.
+Les ventes terminées demandent une connexion eBay dans la fenêtre Chrome dédiée.
+Le profil persiste ; les identifiants et cookies ne quittent pas le service local.
+Les annonces collectées sont désormais consultables dans la page Bonnes affaires,
+avec filtre annonces actives / ventes terminées et liens d'origine.
+Guide : [collecte eBay](tools/EBAY-SCRAPING.md).
+Validation après déploiement : 68 annonces actives enregistrées dans une analyse,
+affichage et filtre des observations vérifiés sur ordinateur/mobile. 56 tests
+Python ciblés réussis. Rapport : `.validation/ebay-app-live.json`.
+
+## Prix Cardmarket disponibles dans l'application
+
+Filtres disponibles : extension, budget minimum/maximum, référence de prix
+(prix bas, tendance, moyennes 1/7/30 jours), série principale ou « holo », tri
+par prix, nom ou identifiant. Le budget et le tri utilisent exactement la série
+et la référence sélectionnées. Les filtres sont conservés dans l'URL et peuvent
+être réinitialisés ; ils s'appliquent avant la pagination.
+
+Les illustrations anglaises TCGdex sont chargées en arrière-plan et agrandissables.
+L'association exige un identifiant produit Cardmarket explicite dans la fiche
+TCGdex ; un nom ressemblant ne suffit pas. Les références sans correspondance
+ou sans image affichent « Illustration indisponible ». Le cache persistant
+`/data/cardmarket-images.json` garde les associations pendant sept jours
+(nouvelle tentative après une heure en cas d'échec partiel). Les noms d'extension
+vérifiés apparaissent progressivement dans le filtre, sinon son numéro est affiché.
+Validation : 40 tests Python ciblés, lint PHP/Twig/JS, filtre de budget, tri,
+série holo, chargement réel d'image, zoom, réinitialisation et mobile vérifiés.
+
+La page [Bonnes affaires](http://localhost:8080/deals) affiche désormais les prix
+réels du catalogue et du guide public Cardmarket : recherche par nom anglais ou
+identifiant, prix bas, tendance et moyennes à 1/7/30 jours, avec variante « holo »
+séparée. Aucun compte ni abonnement Apify n'est nécessaire pour cette source.
+
+Validation du 20 septembre 2026 : téléchargement HTTP 200 depuis Cardmarket de
+74 130 références et 79 193 lignes de guide, jointes par identifiant en
+69 803 références avec prix exploitables. Recherche Pikachu : 917 résultats.
+Guide daté du 20 septembre à 02:42:36 +02:00. Interface ordinateur/mobile et
+pagination vérifiées, conservation après redémarrage du collecteur vérifiée.
+
+Le guide est quotidien : il ne fournit pas les vendeurs, la langue, l'état ni le
+port. Ces références ne deviennent donc pas des offres dans le calcul des marges.
+Les pages d'offres restent bloquées par Cloudflare lors des tests directs.
+
+Cache persistant : `/data/cardmarket-prices.json`, actualisé à la première lecture
+après 24 h ; une panne conserve l'ancien guide avec un statut explicite.
+API : `GET /api/deals/cardmarket-prices?q=Pikachu&page=1` (24 résultats par page).
+Tests : 43 contrôles Python ciblés, lint PHP/Twig, parcours Playwright réel.
+Rapport : `.validation/cardmarket-prices-live.json`.
+Source : [publication officielle Cardmarket](https://news.cardmarket.com/en/Magic/were-making-the-price-guide-and-product-catalogue-available-for-download).
+
+## Cardmarket avec AutoScrape
+
+Un lanceur AutoScrape est disponible pour les fiches Cardmarket, avec export
+JSON des statistiques et CSV des offres Pokémon pour Bonnes affaires.
+Voir [installation, commande et limites](tools/AUTOSCRAPE.md).
+Le test réel du 20 septembre 2026 reste bloqué en HTTP 403 ; l'intégration du
+parseur est testée, mais l'accès aux données Cardmarket n'est pas validé.
+
 ## PokéDeals intégré : bonnes affaires sur les cartes Pokémon
 
 ### Session Chrome locale persistante

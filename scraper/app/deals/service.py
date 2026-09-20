@@ -82,7 +82,7 @@ class DealsService:
 
     def start(self,settings):
         config = settings.model_dump(exclude={'force'})
-        key = hashlib.sha256(json.dumps([3,config],sort_keys=True).encode()).hexdigest()[:32]
+        key = hashlib.sha256(json.dumps([6,config],sort_keys=True).encode()).hexdigest()[:32]
         existing = self.status(key)
         if key in self.tasks: return existing
         # Failed reads have a short cooldown, never a successful empty cache.
@@ -101,17 +101,26 @@ class DealsService:
 
     async def run(self,job,settings):
         collector = self.collector_factory()
+        budget=min(1800,max(180,(2*settings.pages+settings.max_cards*(settings.pages+1)+1)*40))
+        async def progress(source):
+            job.update(reports=collector.reports,requests=collector.requests,
+                       listing_count=len(collector.rows),
+                       observations=[r.model_dump(mode='json') for r in collector.rows[:2000]],
+                       message=f'Collecte lente en cours : {source}. Budget maximal {budget//60} minutes ; résultats sauvegardés au fil des pages.')
+            self.save(job)
+        collector.on_progress=progress
         try:
             try:
-                async with asyncio.timeout(180):
+                async with asyncio.timeout(budget):
                     await collector.collect(settings)
             except TimeoutError:
-                collector.reports.append({'source':'scan','status':'timeout','message':'Limite de trois minutes atteinte ; résultats partiels conservés.'})
+                collector.reports.append({'source':'scan','status':'timeout','message':f'Budget de {budget//60} minutes atteint ; résultats partiels conservés.'})
             result = analyze(collector.rows,settings)
             statuses = {r['status'] for r in collector.reports}
-            failed = bool(statuses & {'blocked','error','unavailable','timeout','no_verified_rows','login_required','verification_required'})
+            failed = bool(statuses & {'partial','blocked','error','unavailable','timeout','no_verified_rows','login_required','verification_required'})
             job.update(result,status=('partial' if collector.rows else 'unavailable') if failed else 'complete',
                        reports=collector.reports,requests=collector.requests,
+                       observations=[row.model_dump(mode='json') for row in collector.rows[:2000]],
                        message='Analyse terminée.' if not failed else 'Collecte incomplète : consultez le statut de chaque source.')
         except Exception:
             job.update(status='error',reports=collector.reports,message='L’analyse a échoué. Les résultats précédents restent conservés.')

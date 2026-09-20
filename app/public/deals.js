@@ -68,7 +68,39 @@
             const a=create('a',label,parent);a.href=url;a.target='_blank';a.rel='noopener noreferrer';return a;
         } catch {}
     }
+    function renderObservations(job) {
+        let section=find('#collected-observations');
+        if(!section){section=create('section');section.id='collected-observations';section.className='panel';find('.deals-results').after(section);}
+        const rows=job.observations || [];section.hidden=!rows.length;section.replaceChildren();
+        if(!rows.length)return;
+        create('h2','Annonces et ventes collectées',section);
+        create('p',`${rows.length} observations consultables. Une annonce active est un prix demandé ; seules les ventes datées servent de références de vente. Les observations sans identité complète restent exclues du calcul des marges.`,section).className='muted';
+        const controls=create('div',undefined,section);controls.className='discovery-controls';
+        const label=create('label','Afficher ',controls);const select=create('select',undefined,label);
+        for(const [value,text] of [['all','Toutes les observations'],['active','Annonces actives'],['sold','Ventes terminées']]){const option=create('option',text,select);option.value=value;}
+        const languageLabel=create('label','Langue de la carte ',controls),languageSelect=create('select',undefined,languageLabel);
+        const languages={ALL:'Toutes, séparées',FR:'Français',EN:'Anglais',JP:'Japonais',DE:'Allemand',IT:'Italien',ES:'Espagnol',KR:'Coréen',CN:'Chinois',UNKNOWN:'Non confirmée'};
+        for(const [value,text] of Object.entries(languages)){const option=create('option',text,languageSelect);option.value=value;}
+        languageSelect.value=job.settings?.language || 'ALL';
+        const count=create('span','',controls),container=create('div',undefined,section);container.className='collected-list';
+        const more=create('button','Afficher davantage',section);more.type='button';let limit=30;
+        function draw(){
+            const filtered=rows.filter(row=>(select.value==='all' || (select.value==='sold')===row.sold) && (languageSelect.value==='ALL' || (row.language || 'UNKNOWN')===languageSelect.value));
+            count.textContent=`${filtered.length} observations`;container.replaceChildren();
+            for(const row of filtered.slice(0,limit)){
+                const article=create('article',undefined,container);article.className='collected-row';
+                link(article,row.title,row.url);
+                create('span',languages[row.language] || languages.UNKNOWN,article).className='muted';
+                const money=new Intl.NumberFormat('fr-FR',{style:'currency',currency:row.currency}).format(row.price);
+                create('strong',money+(row.price_exact===false?' · prix final inconnu':''),article);
+                create('small',`${row.source} · ${row.sold?'Vendu le '+date(row.sold_at):'Annonce active'} · ${row.shipping==null?'Port inconnu':'Port : '+new Intl.NumberFormat('fr-FR',{style:'currency',currency:row.currency}).format(row.shipping)}${row.seller?' · '+row.seller:''} · Relevé le ${date(row.observed_at)}`,article).className='muted';
+            }
+            more.hidden=filtered.length<=limit;
+        }
+        select.addEventListener('change',()=>{limit=30;draw();});languageSelect.addEventListener('change',()=>{limit=30;draw();});more.addEventListener('click',()=>{limit+=30;draw();});draw();
+    }
     function render(job) {
+        renderObservations(job);
         activeJob=job.id; remember('tcg-deals-job',job.id);
         status.textContent=(job.cached?'Résultat en cache. ':'')+job.message+(job.analyzed_at?' Analyse du '+date(job.analyzed_at)+'.':'');
         const sources=find('#deals-sources');sources.replaceChildren();
@@ -110,6 +142,7 @@
         excluded.querySelector('div').replaceChildren();
         const reasons={lot_gradee_ou_reproduction:'Lot, carte gradée ou reproduction',langue_ou_etat_inconnu:'Langue ou état non confirmé',numero_ou_extension_manquant:'Numéro ou extension manquant',variante_non_confirmee:'Variante non confirmée',nom_non_identifie:'Nom non identifié',devise_non_eur:'Devise autre que EUR',prix_negocie_ou_approximatif:'Prix négocié ou approximatif',vente_non_datee_ou_ancienne:'Vente non datée ou hors période',offre_indisponible_ou_ancienne:'Offre indisponible ou relevé de plus de 24 h',echantillon_ventes_insuffisant:'Pas assez de ventes comparables'};
         reasons.identite_contradictoire='Le titre et les métadonnées se contredisent';
+        reasons.langue_ambigue='Plusieurs langues indiquées pour la carte';
         for(const [key,value] of Object.entries(job.excluded || {}))create('p',`${reasons[key] || key} : ${value}`,excluded.querySelector('div'));
         disable(job.status==='running');
         clearTimeout(timer);
@@ -132,6 +165,6 @@
         try {render(await api('/api/deals/import',{settings:settings(),csv:await file.text()}));}
         catch(error){status.textContent=error.message;disable(false);}
     });
-    const savedJob=stored('tcg-deals-job');
+    const savedJob=new URLSearchParams(location.search).get('job') || stored('tcg-deals-job');
     if(savedJob && /^[a-f0-9]{32}$/.test(savedJob)){activeJob=savedJob;poll(savedJob);}
 })();

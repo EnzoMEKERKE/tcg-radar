@@ -85,7 +85,7 @@ def analyze(listings, settings, now=None):
                 'other_costs':settings.other_costs, 'acquisition_cost':round(acquisition,2),
                 'net_profit':round(profit,2), 'roi':round(roi,1), 'observed_at':buy.observed_at.isoformat(),
                 'provenance':buy.provenance, 'confidence':'sales_sample' if direction=='cm_to_ebay' else 'asking_prices_only',
-                'evidence':[{'url':r.url,'price':r.price,'date':(r.sold_at or r.observed_at).isoformat(),'provenance':r.provenance} for r in evidence[:50]],
+                'evidence':[{'url':r.url,'price':r.price,'language':key[4],'date':(r.sold_at or r.observed_at).isoformat(),'provenance':r.provenance} for r in evidence[:50]],
             })
     deals.sort(key=lambda d:d['net_profit'], reverse=True)
     return {'deals':deals, 'deal_count':len(deals), 'listing_count':len(unique), 'matched_groups':len(groups),

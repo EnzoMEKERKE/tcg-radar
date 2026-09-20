@@ -22,8 +22,8 @@ from app.deals.browser import BrowserPages, access_gate
 def public_fragment(html):
     soup = BeautifulSoup(html,'html.parser')
     output = BeautifulSoup('<html><body></body></html>','html.parser')
-    selectors = '.s-item, .s-card, .article-row, h1, .info-list-container, dl, a[href*="/Products/Singles/"], a[rel="next"]'
-    containers = {id(node) for node in soup.select('.s-item, .s-card, .article-row')}
+    selectors = '.s-item, .s-card, .article-row, h1, .info-list-container, dl, a[href*="/Products/Singles/"], a[rel="next"], .pagination'
+    containers = {id(node) for node in soup.select('.s-item, .s-card, .article-row, .pagination')}
     for original in soup.select(selectors):
         if any(id(parent) in containers for parent in original.parents):
             continue
@@ -31,9 +31,9 @@ def public_fragment(html):
         for private in node.select('script,style,form,input,button,iframe,svg'):
             private.decompose()
         for element in [node]+list(node.find_all(True)):
-            element.attrs = {k:v for k,v in element.attrs.items() if k in ('class','id','href','rel','title','data-original-title','data-bs-original-title')}
+            element.attrs = {k:v for k,v in element.attrs.items() if k in ('class','id','href','rel','title','aria-label','aria-current','data-original-title','data-bs-original-title')}
             href = element.get('href')
-            if href and not any(part in href for part in ('/itm/','/Products/','/Users/')):
+            if href and not ((element.get('rel') == ['next'] or 'pagination' in node.get('class',[])) and href.startswith('?')) and not any(part in href for part in ('/itm/','/Products/','/Users/','/usr/')):
                 element.attrs.pop('href',None)
         output.body.append(node)
     return str(output)
@@ -211,16 +211,22 @@ async def read(data: ReadRequest):
 
 
 async def read_page(data):
-    page=await browser.open(data.url)
+    page=await browser.open(data.url,force=True)
     gate=access_gate(page.url,await page.title())
     if gate:
         return {'status':gate.status,'message':str(gate)+' Termine cette étape dans la fenêtre Chrome dédiée, puis relance l’analyse. Si elle tourne en boucle, utilise ton navigateur habituel pour consulter le site ; sa connexion ne sera pas transmise au collecteur. Tu peux importer tes relevés CSV.'}
     if not BrowserPages.allowed_document(page.url):
         return {'status':'verification_required','message':'Reviens sur la fiche ou les résultats dans la fenêtre Chrome dédiée.'}
+    requested,actual=urlsplit(data.url),urlsplit(page.url)
+    original_params,actual_params=parse_qs(requested.query),parse_qs(actual.query)
+    keys=('_nkw','LH_Sold','LH_Complete','_pgn') if requested.hostname=='www.ebay.fr' else ('searchString','site')
+    if requested.hostname!=actual.hostname or requested.path!=actual.path or any(
+            original_params.get(key,['1'] if key=='_pgn' else []) != actual_params.get(key,['1'] if key=='_pgn' else []) for key in keys):
+        return {'status':'unavailable','message':'La page affichée ne correspond pas à la recherche demandée. Relance l’analyse après la connexion.'}
     if not await page.locator('.s-item,.s-card,.article-row,a[href*="/Products/Singles/"]').count():
         return {'status':'unavailable','message':'La page locale ne contient pas encore d’offres. Vérifie l’onglet Chrome dédié.'}
     html=public_fragment(await page.content())
-    return {'status':'ok','html':html,'url':data.url}
+    return {'status':'ok','html':html,'url':page.url}
 
 
 if __name__=='__main__':

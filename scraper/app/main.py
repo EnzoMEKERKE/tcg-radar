@@ -8,6 +8,9 @@ from app.services.discovery import Discovery, DiscoveryQuery
 from app.services.catalog_updates import CatalogUpdates
 from app.deals.models import Settings as DealSettings, ImportRequest
 from app.deals.service import DealsService
+from app.deals.cardmarket_prices import CardmarketPrices
+from app.deals.cardmarket_images import CardmarketImages
+from typing import Literal
 import asyncio
 import os
 import httpx
@@ -18,6 +21,34 @@ last_run = {}
 discovery = Discovery()
 catalog_updates = CatalogUpdates()
 deals = DealsService()
+cardmarket_prices = CardmarketPrices()
+cardmarket_images = CardmarketImages()
+
+
+@app.get('/deals/cardmarket-prices')
+async def cardmarket_price_search(q: str = Query('', max_length=120), page: int = Query(1, ge=1, le=10000),
+        min_price: float | None = Query(None, ge=0, le=1000000, allow_inf_nan=False),
+        max_price: float | None = Query(None, ge=0, le=1000000, allow_inf_nan=False),
+        expansion: int | None = Query(None, ge=1),
+        metric: Literal['low','trend','avg1','avg7','avg30'] = 'trend',
+        variant: Literal['standard','holo'] = 'standard',
+        sort: Literal['recent','name','price_asc','price_desc'] = 'recent'):
+    try:
+        result = cardmarket_prices.search(q, page, min_price=min_price, max_price=max_price,
+            expansion=expansion, metric=metric, variant=variant, sort=sort)
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    result['images_loading'] = cardmarket_images.enrich(result['rows'])
+    expansion_names = {}
+    for product_id, metadata in cardmarket_images.cards.items():
+        product = cardmarket_prices.by_id.get(product_id)
+        if product and metadata.get('set_name'):
+            expansion_names.setdefault(product['expansion_id'], set()).add(metadata['set_name'])
+    for option in result.get('expansions', []):
+        names = expansion_names.get(option['id'], set())
+        if len(names) == 1:
+            option['name'] = next(iter(names))
+    return result
 
 
 @app.get('/deals/browser')

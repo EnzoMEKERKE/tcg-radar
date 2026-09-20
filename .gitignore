@@ -9,3 +9,5 @@ scraper/inspect-*.html
 scraper/product-*.html
 .env
 .local-browser/
+.external/
+.autoscrape/

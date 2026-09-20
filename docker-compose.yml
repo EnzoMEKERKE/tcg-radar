@@ -30,6 +30,7 @@ services:
       DISCOVERY_CACHE: /data/discovery.sqlite
       CRAWL_STATE_DIR: /data/crawl-progress
       DEALS_CACHE: /data/deals.sqlite
+      CARDMARKET_PRICE_CACHE: /data/cardmarket-prices.json
       DEALS_LOCAL_BROWSER_URL: http://host.docker.internal:8766
       SEARXNG_URL: http://search:8080
       BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
