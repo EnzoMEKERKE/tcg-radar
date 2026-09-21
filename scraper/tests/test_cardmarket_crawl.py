@@ -54,3 +54,36 @@ def test_full_search_queues_next_page_but_repeat_does_not_loop(tmp_path):
     assert not crawl.step()
     assert crawl.status()['pagination_unverified']==2
     crawl.db.close()
+
+
+def test_empty_successful_page_remains_pending_for_retry(tmp_path):
+    now=[1000.0]
+    calls=[]
+    def read(url):
+        calls.append(url)
+        return {'status':'ok','html':'<html><h1>Cardmarket</h1></html>'}
+    path=tmp_path/'crawl.sqlite'
+    crawl=module.Crawl(path,'Pikachu',clock=lambda:now[0],read=read)
+    assert not crawl.step()
+    assert crawl.status()['pages']['pending']==1
+    assert crawl.status()['cooldown_until']==2800
+    crawl.db.close()
+    resumed=module.Crawl(path,'Pikachu',clock=lambda:now[0],read=read)
+    assert not resumed.step()
+    assert len(calls)==1
+    resumed.db.close()
+
+
+def test_unparseable_product_page_is_not_marked_done(tmp_path):
+    now=[1000.0]
+    def read(url):
+        if '/Search?' in url:
+            return {'status':'ok','html':f'<a href="{PRODUCT}">Pikachu</a>'}
+        return {'status':'ok','html':'<h1>Pikachu</h1><div class="article-row"></div>'}
+    crawl=module.Crawl(tmp_path/'crawl.sqlite','Pikachu',delay=0,jitter=0,
+                       clock=lambda:now[0],read=read)
+    assert crawl.step()
+    assert not crawl.step()
+    assert crawl.status()['offers']==0
+    assert tuple(crawl.db.execute("SELECT status,note FROM queue WHERE url=?",(PRODUCT,)).fetchone())==('pending','no_verified_data')
+    crawl.db.close()

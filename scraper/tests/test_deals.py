@@ -115,6 +115,20 @@ def test_cm_partial_number_uses_confirmed_full_title_number():
     assert not reason and key[1]=='25/102'
 
 
+def test_cardmarket_partial_number_matches_only_unique_full_printing():
+    cm=listing('cardmarket',20,title='Pikachu (BS 58) Set de Base - Cartes holo',
+               card_number='58',set_code='Set de Base',variant='holo')
+    sales=[listing(price=price,sold=True,identifier=i,
+                   title='Pikachu 58/102 Set de Base holo FR NM')
+           for i,price in enumerate((100,110,120),10)]
+    matched=analyze([cm]+sales,Settings(),now=NOW)
+    assert matched['deal_count']==1
+    assert matched['deals'][0]['card_number']=='58/102'
+    ambiguous=listing(price=130,sold=True,identifier=20,
+                      title='Pikachu 58/130 Set de Base holo FR NM')
+    assert analyze([cm]+sales+[ambiguous],Settings(),now=NOW)['deal_count']==0
+
+
 def test_browser_only_allows_marketplace_search_and_product_documents():
     from app.deals.browser import BrowserPages
     assert BrowserPages.allowed_document('https://www.ebay.fr/sch/i.html?_nkw=pikachu')
@@ -225,6 +239,13 @@ def test_cardmarket_seller_comment_is_not_card_language():
     assert row.language=='FR' and row.card_number=='58'
 
 
+def test_cardmarket_expansion_is_preserved_for_cross_market_matching():
+    html='<h1>Pikachu (BS 58) Set de Base - Cartes holo</h1><dl><dt>Nombre</dt><dd>58</dd><dt>Edité dans</dt><dd>Set de Base</dd></dl><div class="article-row"><a href="/fr/Pokemon/Users/Alice">Alice</a><span class="col-price">10 EUR</span><div class="product-attributes">FR NM</div></div>'
+    row=parse_cardmarket(html,'https://www.cardmarket.com/fr/Pokemon/Products/Singles/Base-Set/Pikachu')[0]
+    assert row.set_code=='Set de Base'
+    assert identity(row)[0]==('pikachu','58','base set','holo','FR','NM')
+
+
 @pytest.mark.parametrize('pages,expected,status',[(1,1,'partial'),(2,2,'ok')])
 def test_cardmarket_pages_deduplicate_and_report_remaining_offers(pages,expected,status):
     from app.deals.collector import Collector
@@ -242,6 +263,27 @@ def test_cardmarket_pages_deduplicate_and_report_remaining_offers(pages,expected
         assert all(r.language=='JP' and r.shipping==2.5 for r in collector.rows)
         assert collector.reports[-1]['status']==status
         assert collector.reports[-1]['shipping_count']==expected
+    asyncio.run(run())
+
+
+def test_cardmarket_search_pagination_discovers_more_products():
+    from app.deals.collector import Collector
+    base='https://www.cardmarket.com/fr/Pokemon/Products/Singles/Base-Set/'
+    visited=[]
+    class Pages:
+        async def product(self,url):
+            visited.append(url)
+            if '/Search?' in url:
+                number=2 if 'site=2' in url else 1
+                next_link='' if number==2 else '<a rel="next" href="?searchString=Pikachu&site=2">Next</a>'
+                return f'<a href="{base}Pikachu-{number}">Pikachu</a>'+next_link,url
+            number=url.rsplit('-',1)[-1]
+            return f'<h1>Pikachu {number}</h1><div class="article-row" id="article-{number}"><a href="/fr/Pokemon/Users/Alice">Alice</a><span class="col-price">10 EUR</span></div>',url
+    async def run():
+        collector=Collector(Pages())
+        await collector.cardmarket('Pikachu',Settings(pages=2,max_cards=2))
+        assert len(collector.rows)==2
+        assert len([url for url in visited if '/Search?' in url])==2
     asyncio.run(run())
 
 

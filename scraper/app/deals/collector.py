@@ -2,7 +2,7 @@
 import asyncio
 import random
 import time
-from urllib.parse import urlencode, urlsplit, urljoin
+from urllib.parse import urlencode, urlsplit, urljoin, parse_qs, urlunsplit
 from bs4 import BeautifulSoup
 import httpx
 from .browser import BrowserPages, MarketplaceAccessError
@@ -87,11 +87,40 @@ class Collector:
     async def cardmarket(self,query,settings):
         base = 'https://www.cardmarket.com/fr/Pokemon'
         url = base+'/Products/Search?'+urlencode({'searchString':query}) if query else base+'/Products/Singles?sortBy=popularity&sortDir=desc'
-        html = await self.read(url,'cardmarket')
-        if html is None: return
-        links = product_links(html,url)[:max(0,settings.max_cards-self.product_count)]
+        links = []
+        seen_search = set()
+        search_url = url
+        search_truncated = False
+        for search_page in range(settings.pages):
+            if search_url in seen_search or len(links) >= settings.max_cards-self.product_count:
+                break
+            seen_search.add(search_url)
+            html = await self.read(search_url,'cardmarket')
+            if html is None:
+                if not links: return
+                break
+            found = product_links(html,search_url)
+            for candidate in found:
+                if candidate not in links:
+                    links.append(candidate)
+                if len(links) >= settings.max_cards-self.product_count:
+                    break
+            next_search = cardmarket_next_page(html,search_url)
+            if not next_search and len(found) >= 30:
+                parts = urlsplit(search_url)
+                params = parse_qs(parts.query)
+                try:
+                    params['site'] = [str(int(params.get('site',['1'])[0])+1)]
+                    next_search = urlunsplit((parts.scheme,parts.netloc,parts.path,urlencode(params,doseq=True),''))
+                except ValueError:
+                    pass
+            if next_search and next_search not in seen_search:
+                search_truncated = search_page == settings.pages-1 or len(links) >= settings.max_cards-self.product_count
+            if not next_search or not found: break
+            search_url = next_search
+            await asyncio.sleep(0.4)
         count = 0
-        truncated = False
+        truncated = search_truncated
         seen_offers = set()
         for link in links:
             self.product_count += 1

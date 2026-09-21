@@ -47,6 +47,17 @@ def analyze(listings, settings, now=None):
             continue
         groups[key].append(row)
 
+    # Cardmarket often publishes only the local card number. Link it to an
+    # eBay full number only when the remaining identity has one unique match.
+    for key in list(groups):
+        if '/' in key[1] or not any(r.source == 'cardmarket' for r in groups[key]):
+            continue
+        candidates = [other for other in groups if other != key and other[1].split('/')[0] == key[1]
+                      and other[0] == key[0] and other[2:] == key[2:]
+                      and any(r.source == 'ebay' for r in groups[other])]
+        if len(candidates) == 1:
+            groups[candidates[0]].extend(groups.pop(key))
+
     deals = []
     for key, rows in groups.items():
         cm = [r for r in rows if r.source == 'cardmarket' and not r.sold]

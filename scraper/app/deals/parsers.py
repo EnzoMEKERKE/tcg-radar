@@ -119,10 +119,15 @@ def parse_cardmarket(html,url):
     soup = BeautifulSoup(html,'html.parser')
     title = text(soup,'h1')
     number = ''
+    expansion = ''
     for dt in soup.select('dt'):
-        if re.search(r'number|numero|nombre',flat(dt.get_text())):
+        label = flat(dt.get_text())
+        if re.search(r'number|numero|nombre',label):
             dd = dt.find_next_sibling('dd')
             if dd: number = dd.get_text(' ',strip=True)
+        if re.search(r'printed in|edite dans|expansion',label):
+            dd = dt.find_next_sibling('dd')
+            if dd: expansion = dd.get_text(' ',strip=True)
     result = []
     for row in soup.select('.article-row'):
         price = amount(text(row,'.price-container .font-weight-bold, .price-container .fw-bold, .col-price'))
@@ -138,6 +143,7 @@ def parse_cardmarket(html,url):
         try:
             result.append(Listing(source='cardmarket',title=title,url=url,price=price,language=language,
                 condition=condition,card_number=number if re.fullmatch(r'[A-Za-z0-9 /-]{1,30}',number) else '',
+                set_code=expansion[:100],
                 shipping=shipping_of(text(row,'.shipping-price, .shipping-cost')),seller=seller,
                 listing_id=row.get('id',''),variant='reverse' if re.search(r'reverse',attrs,re.I) else '',
                 available=not bool(re.search(r'sold out|rupture|indisponible',flat(row.get_text())))))

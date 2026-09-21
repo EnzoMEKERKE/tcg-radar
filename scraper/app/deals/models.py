@@ -53,6 +53,11 @@ class Listing(BaseModel):
         return self
 
 
+class BrowserRequest(BaseModel):
+    query: str = Field(default='', max_length=120)
+    manual: bool = False
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False, extra='forbid')
     query: str = Field(default='', max_length=120)

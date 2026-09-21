@@ -1,6 +1,14 @@
 # Collecte progressive Cardmarket
 
-Le compte doit être connecté dans la fenêtre du collecteur. Une connexion dans
+Si Cloudflare affiche « Un instant… » en boucle, utiliser **Connexion manuelle
+Cardmarket** en haut de la page Bonnes affaires. Le service ferme son Chrome
+piloté et ouvre Chrome normalement, avec le même profil dédié et ses connexions
+enregistrées. Pendant cette étape, aucune collecte ne peut utiliser le profil.
+Terminer la connexion soi-même, fermer cette fenêtre, puis relancer l'analyse.
+L'accès n'est pas garanti après le retour au navigateur de collecte.
+
+Le compte doit être connecté manuellement dans la fenêtre du collecteur ; les
+identifiants ne sont pas demandés par le programme. Une connexion dans
 une autre fenêtre peut ne pas être reprise. Ne pas lancer d'analyse dans
 l'application pendant cette collecte, car elle utilise le même navigateur.
 
@@ -25,6 +33,13 @@ python tools/cardmarket_crawl.py --query "Pikachu" --status
 python tools/cardmarket_crawl.py --query "Pikachu" --export .local-browser/cardmarket-offres.csv
 ```
 
+Le CSV contient une URL de fiche produit pour chaque offre, le vendeur,
+l'identifiant d'annonce, son prix, sa langue, son état et sa date de relevé.
+Il est directement importable dans « Bonnes affaires ». Une annonce relevée
+dans le passé doit être vérifiée sur Cardmarket avant achat ; si la session
+Chrome demande une vérification, le collecteur conserve les observations
+existantes mais n'en annonce pas de nouvelles.
+
 Le mode `--scope pokemon --db .local-browser/cardmarket-pokemon.sqlite` part du
 catalogue Pokémon. Il ne faut pas annoncer un catalogue complet tant que les
 compteurs de pagination non confirmée ou de pages restantes sont non nuls.
@@ -38,6 +53,7 @@ sonder la page suivante au même rythme. Cette pagination déduite reste marqué
 comme non confirmée tant que les liens explicites sont absents.
 
 Les prix et langues sont ceux des offres. Un délai d'expédition n'est pas un coût
-de livraison. Le port reste inconnu si aucun prix de port n'est visible. Les
+de livraison. Même connecté, le port reste inconnu si aucun montant n'est visible
+sur la fiche ; le collecteur n'ajoute pas d'article au panier pour le calculer. Les
 relevés accumulés à des dates différentes ne constituent pas un instantané des
 stocks actuels et doivent être actualisés avant une décision d'achat.

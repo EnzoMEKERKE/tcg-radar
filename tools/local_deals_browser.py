@@ -7,6 +7,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from copy import copy
 from pathlib import Path
+import os
+import subprocess
 import sys
 from urllib.parse import urlsplit, parse_qs, urlencode
 
@@ -45,6 +47,11 @@ class ReadRequest(BaseModel):
 
 class PrepareRequest(BaseModel):
     query: str = Field(default='Pikachu',max_length=120)
+    manual: bool = False
+
+
+class BrowserNavigationError(RuntimeError):
+    pass
 
 
 class LocalBrowser:
@@ -56,8 +63,14 @@ class LocalBrowser:
         self.targets = {}
         self.lock = asyncio.Lock()
         self.preparing = None
+        self.manual_process = None
+
+    def manual_running(self):
+        return self.manual_process is not None and self.manual_process.poll() is None
 
     async def start(self):
+        if self.manual_running():
+            raise BrowserNavigationError('Connexion manuelle en cours. Fermez cette fenêtre Chrome après la connexion, puis relancez l’analyse.')
         if self.session and not self.closed: return
         await self.reset()
         factory = self.session_factory
@@ -116,6 +129,8 @@ class LocalBrowser:
             page = await self.session.context.new_page()
             self.pages[source] = page
             force = True
+        elif page.url.startswith(('about:', 'chrome-error:')):
+            force = True
         elif access_gate(page.url,await page.title()) or not BrowserPages.allowed_document(page.url):
             # Leave the tab untouched while the user signs in / handles a verification.
             return page
@@ -127,16 +142,39 @@ class LocalBrowser:
             except Exception as error:
                 if is_closed_error(error):
                     raise
+                if not access_gate(page.url,await page.title()):
+                    self.targets.pop(source,None)
+                    raise BrowserNavigationError('Chrome n’a pas pu charger la page. Vérifiez la connexion Internet puis réessayez.') from error
         return page
 
-    async def prepare(self,query):
+    async def prepare(self,query,manual=False):
         async with self.lock:
+            if self.manual_running():
+                return
+            if manual:
+                candidates = [Path(os.environ.get(name,''))/'Google/Chrome/Application/chrome.exe'
+                              for name in ('ProgramFiles','ProgramFiles(x86)','LOCALAPPDATA') if os.environ.get(name)]
+                chrome = next((path for path in candidates if path.is_file()),None)
+                if chrome is None:
+                    raise BrowserNavigationError('Google Chrome est introuvable sur cet ordinateur.')
+                await self.reset()
+                profile = ROOT/'.local-browser/profile'
+                profile.mkdir(parents=True,exist_ok=True)
+                self.manual_process = subprocess.Popen([str(chrome),'--user-data-dir='+str(profile),
+                    '--no-first-run','--new-window','https://www.cardmarket.com/fr/Pokemon'],
+                    stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                return
             word = query or 'Pikachu'
-            urls = ['https://www.ebay.fr/sch/i.html?'+urlencode({'_nkw':word,'LH_Sold':1,'LH_Complete':1,'_ipg':60}),
-                    'https://www.ebay.fr/sch/i.html?'+urlencode({'_nkw':word,'LH_BIN':1,'_ipg':60}),
-                    'https://www.cardmarket.com/fr/Pokemon/Products/Search?'+urlencode({'searchString':word})]
-            for url in urls:
-                await self.open(url)
+            url = 'https://www.cardmarket.com/fr/Pokemon/Products/Search?'+urlencode({'searchString':word})
+            page = await self.open(url)
+            await page.bring_to_front()
+            # Selecting a tab alone does not restore a minimized Chrome window.
+            cdp = await self.session.context.new_cdp_session(page)
+            try:
+                window = await cdp.send('Browser.getWindowForTarget')
+                await cdp.send('Browser.setWindowBounds',{'windowId':window['windowId'],'bounds':{'windowState':'normal'}})
+            finally:
+                await cdp.detach()
 
     async def status(self):
         rows=[]
@@ -151,8 +189,12 @@ class LocalBrowser:
                 rows.append({'source':source,'status':'waiting','items':0})
         error = None
         if self.preparing and self.preparing.done() and not self.preparing.cancelled() and self.preparing.exception():
-            error = 'Impossible de démarrer Chrome local. Vérifiez les dépendances et réessayez.'
-        return {'available':True,'browser_open':bool(self.session and not self.closed),'preparing':bool(self.preparing and not self.preparing.done()),'pages':rows,'error':error}
+            failure = self.preparing.exception()
+            error = str(failure) if isinstance(failure,BrowserNavigationError) else 'Impossible d’ouvrir Chrome. Relancez le service local puis réessayez.'
+        manual = self.manual_running()
+        return {'available':True,'browser_open':manual or bool(self.session and not self.closed),'preparing':bool(self.preparing and not self.preparing.done()),'pages':rows,'error':error,
+                'mode':'manual' if manual else 'collector',
+                'message':'Chrome manuel ouvert. Terminez la connexion à Cardmarket, puis fermez cette fenêtre avant de relancer l’analyse.' if manual else None}
 
 
 def is_closed_error(error):
@@ -192,7 +234,7 @@ async def status():
 @app.post('/prepare')
 async def prepare(data: PrepareRequest):
     if not browser.preparing or browser.preparing.done():
-        browser.preparing=asyncio.create_task(browser.prepare(data.query))
+        browser.preparing=asyncio.create_task(browser.prepare(data.query,manual=data.manual))
     return await browser.status()
 
 
@@ -203,6 +245,8 @@ async def read(data: ReadRequest):
             return await read_page(data)
         except HTTPException:
             raise
+        except BrowserNavigationError as error:
+            return {'status':'unavailable','message':str(error)}
         except Exception as error:
             if is_closed_error(error):
                 await browser.reset()

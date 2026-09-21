@@ -138,7 +138,15 @@ class CardmarketPrices:
         selected = []
         for row in matches[(page-1)*limit:page*limit]:
             search_name = re.sub(r'\[.*?\]', '', row['name']).strip()
-            selected.append(dict(row, selected_price=row['prices'].get(price_key), search_url='https://www.cardmarket.com/fr/Pokemon/Products/Search?'+urlencode({'searchString': search_name})))
+            shown_key = price_key
+            if row['prices'].get(shown_key) is None:
+                for fallback in (('low-holo', 'avg-holo', 'trend-holo') if variant == 'holo' else ('low', 'avg', 'trend')):
+                    if row['prices'].get(fallback) is not None:
+                        shown_key = fallback
+                        break
+            selected.append(dict(row, selected_price=row['prices'].get(shown_key), selected_price_key=shown_key,
+                                 product_url='https://www.cardmarket.com/fr/Pokemon/Products?'+urlencode({'idProduct': row['id']}),
+                                 search_url='https://www.cardmarket.com/fr/Pokemon/Products/Search?'+urlencode({'searchString': search_name})))
         source_age = (now - datetime.fromisoformat(self.snapshot['guide_date'])).total_seconds()
         return {**{key: value for key, value in self.snapshot.items() if key != 'rows'},
                 'status': 'stale' if age >= 86400 or source_age > 172800 else 'ok',

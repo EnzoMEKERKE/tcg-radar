@@ -6,7 +6,7 @@ from app.services.fx import eur_rates
 from app.services.shipping import shipping_for
 from app.services.discovery import Discovery, DiscoveryQuery
 from app.services.catalog_updates import CatalogUpdates
-from app.deals.models import Settings as DealSettings, ImportRequest
+from app.deals.models import Settings as DealSettings, ImportRequest, BrowserRequest
 from app.deals.service import DealsService
 from app.deals.cardmarket_prices import CardmarketPrices
 from app.deals.cardmarket_images import CardmarketImages
@@ -58,9 +58,9 @@ async def browser_status():
 
 
 @app.post('/deals/browser')
-async def prepare_browser(settings: DealSettings):
+async def prepare_browser(settings: BrowserRequest):
     from app.deals.local_browser import local_prepare
-    return await local_prepare(settings.query)
+    return await local_prepare(settings.query,manual=settings.manual)
 
 
 @app.post('/deals/search')

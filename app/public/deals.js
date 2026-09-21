@@ -42,24 +42,28 @@
         if(!response.ok) throw new Error(result.error || 'Analyse indisponible.');
         return result;
     }
-    async function refreshBrowser(prepare=false) {
+    async function refreshBrowser(prepare=false,manual=false) {
         const label=find('#local-browser-status');
         const button=find('#prepare-local-browser');
+        const manualButton=find('#prepare-manual-browser');
         if(!label || !button)return;
         clearTimeout(browserTimer);
         try {
-            if(prepare){button.disabled=true;label.textContent='Ouverture des recherches dans Chrome…';}
-            const data=await api('/api/deals/browser',prepare?{query:form.elements.query.value}:undefined);
+            if(prepare){button.disabled=true;if(manualButton)manualButton.disabled=true;label.textContent='Ouverture de Cardmarket dans Chrome…';}
+            const data=await api('/api/deals/browser',prepare?{query:form.elements.query.value,manual}:undefined);
             if(!data.available){label.textContent=data.message || 'Navigateur local arrêté. Lance tools/local_deals_browser.py depuis le dossier du projet.';return;}
+            if(data.error){label.textContent=data.error;return;}
+            if(data.mode==='manual'){label.textContent=data.message;browserTimer=setTimeout(()=>refreshBrowser(),4000);return;}
             if(data.browser_open===false && !data.preparing){label.textContent='Chrome est fermé. Il sera rouvert au prochain scan, ou avec le bouton ci-dessus. Ton profil est conservé.';return;}
             const names={ebay_sold:'Ventes eBay',ebay_active:'Annonces eBay',cardmarket:'Cardmarket'};
             const states={ready:'page chargée',waiting:'page à vérifier dans Chrome',login_required:'connecte-toi dans Chrome',verification_required:'vérification à terminer dans Chrome'};
             label.textContent=data.error || (data.preparing?'Ouverture des onglets… ': 'Navigateur local disponible. ')+(data.pages || []).map(row=>`${names[row.source] || row.source} : ${states[row.status] || row.status}`).join(' · ');
             if(data.preparing || (data.pages || []).some(row=>row.status!=='ready'))browserTimer=setTimeout(()=>refreshBrowser(),4000);
         } catch(error){label.textContent=error.message;}
-        finally{button.disabled=false;}
+        finally{button.disabled=false;if(manualButton)manualButton.disabled=false;}
     }
     find('#prepare-local-browser')?.addEventListener('click',()=>refreshBrowser(true));
+    find('#prepare-manual-browser')?.addEventListener('click',()=>refreshBrowser(true,true));
     refreshBrowser();
     function link(parent,label,url) {
         try {

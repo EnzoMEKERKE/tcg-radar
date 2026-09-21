@@ -18,7 +18,7 @@ def access_gate(url, title=''):
         return MarketplaceAccessError('login_required','Cardmarket demande une connexion dans la fenêtre Chrome dédiée.')
     if host == 'signin.ebay.fr' or (host in ('ebay.fr','www.ebay.fr') and parsed.path.lower() in ('/signin', '/login')):
         return MarketplaceAccessError('login_required','eBay demande une connexion pour accéder à cette recherche.')
-    if parsed.path == '/splashui/challenge' or any(word in title.lower() for word in ('just a moment','attention required','pardon our interruption','security measure','captcha')):
+    if parsed.path == '/splashui/challenge' or any(word in title.lower() for word in ('just a moment','un instant','attention required','pardon our interruption','security measure','captcha')):
         return MarketplaceAccessError('verification_required','La plateforme demande une vérification dans le navigateur ; aucune annonce n’a été lue sur cette page.')
     return None
 

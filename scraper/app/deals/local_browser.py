@@ -19,11 +19,11 @@ async def local_status():
         return {'available':False,'message':'Démarre tools/local_deals_browser.py sur ton ordinateur.'}
 
 
-async def local_prepare(query):
+async def local_prepare(query,manual=False):
     if not local_url(): return {'available':False}
     try:
         async with httpx.AsyncClient(timeout=5,trust_env=False) as client:
-            response=await client.post(local_url()+'/prepare',json={'query':query},headers={'X-TCG-Local':'browser'})
+            response=await client.post(local_url()+'/prepare',json={'query':query,'manual':manual},headers={'X-TCG-Local':'browser'})
             response.raise_for_status()
             return response.json()
     except (httpx.HTTPError,ValueError):

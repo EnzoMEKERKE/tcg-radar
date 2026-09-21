@@ -84,6 +84,8 @@ def identity(listing):
         number = title_number
     number = number or (match[0].replace(' ', '') if match else '')
     code = flat(listing.set_code).strip() or (SET.search(text)[0] if SET.search(text) else '')
+    if code == 'set de base':
+        code = 'base set'
     if not number or ('/' not in number and not code):
         return None, 'numero_ou_extension_manquant'
     # Retain the denominator: 4/102 and 4/130 are different printings.
@@ -101,6 +103,11 @@ def identity(listing):
         return None, 'variante_non_confirmee'
     rest = NUMBER.sub('', rest)
     rest = SET.sub('', rest)
+    if listing.source == 'cardmarket':
+        rest = re.sub(r'\(\s*[a-z]{1,5}\s*\d{1,4}\s*\)', '', rest)
+        rest = re.sub(r'\bcartes?\b', '', rest)
+        if code:
+            rest = rest.replace(code, '').replace('set de base', '')
     for pattern in LANGUAGES.values():
         rest = re.sub(r'\b(?:'+pattern+r')\b', '', rest)
     rest = re.sub(r'\b(pokemon|tcg|card|carte|near mint|mint|nm|mt|excellent|good|light played|played|lp|gd|pl|po|free shipping|livraison gratuite)\b', '', rest)

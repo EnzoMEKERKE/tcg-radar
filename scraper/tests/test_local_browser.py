@@ -22,19 +22,28 @@ def test_cardmarket_pagination_survives_sanitization_without_account_data():
 
 
 class FakePage:
-    def __init__(self): self.closed=False;self.url='about:blank';self.visited=[]
+    def __init__(self): self.closed=False;self.url='about:blank';self.visited=[];self.foreground=False
     def is_closed(self):return self.closed
     async def title(self):return 'Pikachu'
     async def goto(self,url,**kwargs):self.url=url;self.visited.append(url)
     async def wait_for_timeout(self,ms):pass
+    async def bring_to_front(self):self.foreground=True
 
 
 class FakeContext:
-    def __init__(self):self.closed=False;self.listeners={};self.created=[]
+    def __init__(self):self.closed=False;self.listeners={};self.created=[];self.window_commands=[]
     def on(self,event,callback):self.listeners[event]=callback
     async def new_page(self):
         if self.closed:raise TargetClosedError('Closed')
         page=FakePage();self.created.append(page);return page
+    async def new_cdp_session(self,page):
+        context=self
+        class Session:
+            async def send(self,method,params=None):
+                context.window_commands.append((method,params))
+                return {'windowId':42}
+            async def detach(self):pass
+        return Session()
     def shut(self,notify=True):
         self.closed=True
         for page in self.created:page.closed=True
@@ -78,6 +87,89 @@ def test_closed_single_tab_reloads_same_search(monkeypatch,tmp_path):
         first.closed=True
         second=await browser.open(url)
         assert browser.session is session and second.visited==[url]
+        await browser.reset()
+    asyncio.run(run())
+
+
+def test_prepare_recovers_blank_tab_and_restores_cardmarket_window(monkeypatch,tmp_path):
+    monkeypatch.setattr(helper,'ROOT',tmp_path)
+    async def run():
+        browser=helper.LocalBrowser(FakeSession)
+        url='https://www.cardmarket.com/fr/Pokemon/Products/Search?searchString=Pikachu'
+        page=await browser.open(url)
+        page.url='chrome-error://chromewebdata/'
+        await browser.prepare('Pikachu')
+        assert page.visited==[url,url] and page.foreground
+        assert list(browser.pages)==['cardmarket']
+        assert ('Browser.setWindowBounds',{'windowId':42,'bounds':{'windowState':'normal'}}) in browser.session.context.window_commands
+        await browser.reset()
+    asyncio.run(run())
+
+
+def test_navigation_error_is_reported_and_can_be_retried(monkeypatch,tmp_path):
+    monkeypatch.setattr(helper,'ROOT',tmp_path)
+    async def run():
+        browser=helper.LocalBrowser(FakeSession)
+        url='https://www.cardmarket.com/fr/Pokemon/Products/Search?searchString=Pikachu'
+        page=await browser.open(url)
+        async def fail(*args,**kwargs):
+            page.url='about:blank'
+            raise RuntimeError('net::ERR_FAILED')
+        monkeypatch.setattr(page,'goto',fail)
+        browser.preparing=asyncio.create_task(browser.open(url,force=True))
+        with pytest.raises(helper.BrowserNavigationError):await browser.preparing
+        assert 'charger' in (await browser.status())['error']
+        monkeypatch.setattr(page,'goto',FakePage.goto.__get__(page))
+        await browser.prepare('Pikachu')
+        assert page.url==url
+        await browser.reset()
+    asyncio.run(run())
+
+
+def test_french_challenge_is_not_reloaded_by_scan(monkeypatch,tmp_path):
+    monkeypatch.setattr(helper,'ROOT',tmp_path)
+    async def run():
+        browser=helper.LocalBrowser(FakeSession)
+        url='https://www.cardmarket.com/fr/Pokemon/Products/Search?searchString=Pikachu'
+        page=await browser.open(url)
+        async def title():return 'Un instant…'
+        monkeypatch.setattr(page,'title',title)
+        await browser.open(url,force=True)
+        assert page.visited==[url]
+        assert helper.access_gate(url,await page.title()).status=='verification_required'
+        await browser.reset()
+    asyncio.run(run())
+
+
+def test_manual_login_keeps_profile_and_blocks_automation_until_closed(monkeypatch,tmp_path):
+    monkeypatch.setattr(helper,'ROOT',tmp_path)
+    monkeypatch.setenv('ProgramFiles',str(tmp_path))
+    chrome=tmp_path/'Google/Chrome/Application/chrome.exe'
+    chrome.parent.mkdir(parents=True)
+    chrome.touch()
+    calls=[]
+    class Process:
+        exited=False
+        def poll(self):return 0 if self.exited else None
+    process=Process()
+    def launch(args,**kwargs):calls.append(args);return process
+    monkeypatch.setattr(helper.subprocess,'Popen',launch)
+    async def run():
+        browser=helper.LocalBrowser(FakeSession)
+        url='https://www.cardmarket.com/fr/Pokemon/Products/Search'
+        page=await browser.open(url)
+        profile=browser.session.options['user_data_dir']
+        await browser.prepare('Pikachu',manual=True)
+        assert page.closed
+        assert '--user-data-dir='+profile in calls[0]
+        assert (await browser.status())['mode']=='manual'
+        with pytest.raises(helper.BrowserNavigationError,match='manuelle'):
+            await browser.open(url)
+        await browser.prepare('Pikachu',manual=True)
+        assert len(calls)==1
+        process.exited=True
+        await browser.open(url)
+        assert browser.session.options['user_data_dir']==profile
         await browser.reset()
     asyncio.run(run())
 

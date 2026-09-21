@@ -39,6 +39,7 @@ def test_download_persist_reload_and_filter(tmp_path):
         assert store.search('pikachu')['total']==1
         assert store.search('charizard')['total']==0
         assert store.search('1')['rows'][0]['id']==1
+        assert store.search('1')['rows'][0]['product_url']=='https://www.cardmarket.com/fr/Pokemon/Products?idProduct=1'
         reloaded=CardmarketPrices(store.path)
         assert reloaded.search()['indexed_count']==1
         assert reloaded.task is None
@@ -84,6 +85,9 @@ def test_price_filters_holo_sort_and_facets(tmp_path):
     assert store.search(min_price=5,max_price=10)['total']==1
     assert store.search(variant='holo',min_price=30,max_price=40)['total']==3
     assert store.search(metric='low',max_price=1)['total']==3
+    fallback=next(r for r in store.search(metric='trend')['rows'] if r['id']==3)
+    assert fallback['selected_price']==0.2 and fallback['selected_price_key']=='low'
+    assert store.search(metric='trend',min_price=0,max_price=1)['total']==0
     result=store.search(expansion=20)
     assert result['total']==1 and len(result['expansions'])==2
     import pytest

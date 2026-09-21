@@ -8,8 +8,5 @@ try {
     }
 } catch {}
 $pythonExe = (Get-Command python -ErrorAction Stop).Source
-$helperPath = Join-Path $projectRoot 'tools/local_deals_browser.py'
-$logDir = Join-Path $projectRoot '.local-browser'
-New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-Start-Process -FilePath $pythonExe -ArgumentList ('"' + $helperPath + '"') -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logDir 'service.log') -RedirectStandardError (Join-Path $logDir 'service-error.log')
-Write-Host 'Service lance. Ouvre http://localhost:8080/deals puis clique sur Ouvrir la session Chrome locale.'
+& $pythonExe (Join-Path $projectRoot 'tools/start_local_browser.py')
+exit $LASTEXITCODE

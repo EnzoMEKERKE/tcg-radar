@@ -130,11 +130,21 @@ class Crawl:
             return False
         html=result.get('html','')
         soup=BeautifulSoup(html,'html.parser')
+        # A successful browser response can still contain an incomplete page.
+        # Keep it queued rather than silently losing this search or product.
+        parsed=product_links(html,entry['url']) if entry['kind']=='search' else parse_cardmarket(html,entry['url'])
+        if not parsed:
+            with self.db:
+                self.db.execute("UPDATE queue SET status='pending',note=? WHERE url=?",
+                                ('no_verified_data',entry['url']))
+                self.set('cooldown_until',self.clock()+1800)
+                self.set('message','Page Cardmarket sans données vérifiées ; nouvelle tentative après 30 minutes.')
+            return False
         target=cardmarket_next_page(html,entry['url'])
         uncertain=False
         with self.db:
             if entry['kind']=='search':
-                links=product_links(html,entry['url'])
+                links=parsed
                 fresh_links=0
                 if not links:
                     uncertain=True
@@ -150,7 +160,7 @@ class Crawl:
                     target=None
                     uncertain=True
             else:
-                rows=parse_cardmarket(html,entry['url'])
+                rows=parsed
                 fresh=0
                 for row in rows:
                     key=json.dumps([urlsplit(row.url).path,row.listing_id or row.seller,row.language,row.condition,row.variant])
@@ -180,7 +190,7 @@ class Crawl:
                 'cooldown_until':float(self.get('cooldown_until','0')),'message':self.get('message','Prêt')}
 
     def export(self,path):
-        fields=['source','title','url','price','currency','shipping','language','condition','card_number','set_code','variant','sold','sold_at','observed_at','seller','listing_id','price_exact']
+        fields=['source','title','url','price','currency','shipping','language','condition','card_number','set_code','variant','sold','sold_at','observed_at','available','seller','listing_id','price_exact','provenance']
         with open(path,'w',encoding='utf-8-sig',newline='') as stream:
             writer=csv.DictWriter(stream,fieldnames=fields,extrasaction='ignore')
             writer.writeheader()

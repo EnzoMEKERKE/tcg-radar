@@ -62,12 +62,13 @@
                 add(card,'h3',row.name,'offer-title');
                 add(card,'p',`${row.set_name || 'Extension n° '+(row.expansion_id ?? 'inconnue')}${row.card_number?' · Carte '+row.card_number:''} · Réf. ${row.id}`,'muted');
                 add(card,'strong',euro(row.selected_price),'cm-selected-price');
-                add(card,'small',labels[filters.metric]+(filters.variant==='holo'?' · série holo':''),'muted');
+                const shownKey=row.selected_price_key || data.price_key;
+                add(card,'small',(labels[shownKey.replace('-holo','')] || labels[filters.metric])+(filters.variant==='holo'?' · série holo':'')+(shownKey!==data.price_key?' · autre prix publié':''),'muted');
                 prices(card,row.prices,filters.variant==='holo'?'-holo':'');
                 if(filters.variant!=='holo' && Object.entries(row.prices).some(([key,value])=>key.endsWith('-holo') && value!=null)){
                     const details=add(card,'details');add(details,'summary','Variante « holo » du guide');prices(details,row.prices,'-holo');
                 }
-                const link=add(card,'a','Voir sur Cardmarket','button');link.href=row.search_url;link.target='_blank';link.rel='noopener noreferrer';
+                const link=add(card,'a','Voir les offres de cette carte','button');link.href=row.product_url;link.target='_blank';link.rel='noopener noreferrer';
             }
             if(!data.rows.length)add(results,'p','Aucune carte ne correspond à ces filtres. Élargissez le budget ou réinitialisez la recherche.');
             previous.hidden=page<=1;next.hidden=page*data.limit>=data.total;
